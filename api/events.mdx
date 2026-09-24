@@ -1,0 +1,60 @@
+---
+title: "Record usage events"
+description: "Record usage-only metrics without changing a customer's credit balance."
+api: "POST /v1/events"
+---
+
+# Record usage events
+
+`POST /v1/events` records a project-defined usage metric without charging credits.
+Use it for tokens, video seconds, documents, API calls, storage, or another quantity that you want to report.
+
+## Request
+
+```bash
+curl -X POST "$QUOTAMINT_BASE_URL/v1/events" \
+  -H "Authorization: Bearer $QUOTAMINT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerId": "customer_123",
+    "event": "tokens_used",
+    "quantity": 1840,
+    "idempotencyKey": "model-request-8472",
+    "metadata": {
+      "model": "example-model"
+    }
+  }'
+```
+
+### Request fields
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `customerId` | string | Yes | Your application's customer, user, or organization ID. |
+| `event` | string | Yes | Your project-defined metric key. |
+| `quantity` | integer | Yes | Quantity recorded for the event. |
+| `idempotencyKey` | string | No | Stable key if the event may be retried. |
+| `metadata` | object | No | JSON context for reporting and reconciliation. |
+| `timestamp` | RFC 3339 string | No | Event time. Defaults to the time QuotaMint receives the request. |
+
+`quantity` must be an integer from 1 through 1,000,000.
+An event timestamp cannot be more than five minutes in the future.
+
+## Response
+
+```json
+{
+  "accepted": true,
+  "eventId": "evt_6b7c1f2a4b3c8d4e5f6071829304abcd"
+}
+```
+
+Events do not change the customer's credit balance.
+They count toward your workspace's monthly event allowance.
+
+## Idempotent retries
+
+When you provide an idempotency key, retry the same event with the same key and payload.
+QuotaMint returns the original event result instead of recording a duplicate.
+
+Without an idempotency key, every accepted request is a new event.

@@ -1,0 +1,69 @@
+---
+title: "Errors"
+description: "Handle HTTP errors, denied decisions, rate limits, and retryable failures."
+---
+
+# Errors
+
+QuotaMint uses two response categories:
+
+1. **Decisions** return HTTP `200` and include `allowed: true` or `allowed: false`.
+2. **Request or service errors** return a non-`2xx` status and an `error` object.
+
+## Error format
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "The request body must contain exactly one JSON object."
+  },
+  "requestId": "req_123"
+}
+```
+
+Use `code` for program logic and `message` for logs or operator tools.
+Use `requestId` when contacting support or correlating a failed request.
+
+## HTTP statuses
+
+| Status | Meaning | Typical action |
+| ---: | --- | --- |
+| `200` | Decision, successful consumption, or accepted event | Read the response body. |
+| `400` | Invalid request, insufficient credits, or metadata limit | Fix the request or show the customer an appropriate message. |
+| `401` | Missing, invalid, or revoked API key | Check the server-side credential and environment. |
+| `403` | Project disabled | Stop sending traffic and review project settings. |
+| `404` | Unknown route or customer | Check the URL, project, environment, and customer synchronization. |
+| `409` | Idempotency key conflict or account capacity conflict | Reuse the original payload, or resolve the capacity issue. |
+| `413` | Request body too large | Reduce the request body and metadata. |
+| `429` | Rate limit or monthly workspace allowance reached | Honor `Retry-After` for rate limits and review the workspace plan for monthly limits. |
+| `500` | QuotaMint could not complete the request | Retry with the same idempotency key for `consume` or an idempotent event. |
+| `503` | Runtime or dependency unavailable | Retry with backoff and the same idempotency key. |
+
+## Common error codes
+
+- `invalid_request`
+- `invalid_api_key`
+- `revoked_api_key`
+- `project_disabled`
+- `customer_not_found`
+- `plan_inactive`
+- `idempotency_key_reused`
+- `metadata_limit_exceeded`
+- `rate_limited`
+- `workspace_usage_limit_exceeded`
+- `service_unavailable`
+- `internal_error`
+
+## Retry policy
+
+Retry network failures, `500`, and `503` responses with exponential backoff.
+For `429 rate_limited`, wait at least the number of seconds in the `Retry-After` header.
+
+For `consume`, always reuse the same idempotency key when you are retrying the same operation.
+Do not retry a denied `200` response as the same operation unless you intend to preserve that decision.
+Create a new key for a new attempt after your application state changes.
+
+<Warning>
+  Never retry a `consume` request with a new idempotency key just because the first response timed out. You could create a second charge if the first request succeeded.
+</Warning>

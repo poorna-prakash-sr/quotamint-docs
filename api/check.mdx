@@ -1,0 +1,78 @@
+---
+title: "Check access"
+description: "Preview whether a customer can use a feature without consuming credits."
+api: "POST /v1/check"
+---
+
+# Check access
+
+`POST /v1/check` returns the current access and affordability decision without recording usage or changing the customer's balance.
+
+Use it to show or hide an action before the customer starts it.
+Use [`consume`](/api/consume) when your backend must enforce the decision.
+
+## Request
+
+```bash
+curl -X POST "$QUOTAMINT_BASE_URL/v1/check" \
+  -H "Authorization: Bearer $QUOTAMINT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerId": "customer_123",
+    "feature": "image_generation",
+    "quantity": 1
+  }'
+```
+
+### Request fields
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `customerId` | string | Yes | Your application's customer, user, or organization ID. |
+| `feature` | string | Yes | The feature key configured in the dashboard. |
+| `quantity` | integer | No | Number of units to evaluate. Defaults to `1`. |
+
+## Allowed response
+
+```json
+{
+  "allowed": true,
+  "customerId": "customer_123",
+  "feature": "image_generation",
+  "quantity": 1,
+  "requiredCredits": 10,
+  "creditsRemaining": 500
+}
+```
+
+`requiredCredits` is the cost for the requested quantity.
+
+## Denied response
+
+```json
+{
+  "allowed": false,
+  "customerId": "customer_123",
+  "feature": "image_generation",
+  "quantity": 1,
+  "reason": "insufficient_credits",
+  "creditsRemaining": 3
+}
+```
+
+Common denial reasons are:
+
+- `customer_not_found`
+- `customer_inactive`
+- `no_active_plan`
+- `plan_inactive`
+- `feature_not_found`
+- `feature_not_entitled`
+- `insufficient_credits`
+
+A denied decision is still a successful API response with HTTP `200`.
+Check `allowed` before using the result.
+
+<Warning>
+  Do not use `check` as the only enforcement step. Another request can change access or spend the remaining credits before your application acts.
+</Warning>

@@ -1,0 +1,64 @@
+---
+title: "Test and Live environments"
+description: "Keep development and production usage isolated with environment-specific keys and data."
+---
+
+# Test and Live environments
+
+Use Test while you develop and Live when your production backend is ready.
+QuotaMint keeps the operational data for each environment separate.
+
+## What is isolated
+
+Test and Live use separate:
+
+- API keys
+- Customer records
+- Plan assignments
+- Credit balances
+- Usage events
+- Runtime history
+
+A Test customer with ID `customer_123` is not the same record as a Live customer with ID `customer_123`.
+
+## What is shared
+
+Project configuration is shared between environments:
+
+- Plans
+- Features
+- Feature keys
+- Entitlements
+
+Create and verify configuration in Test before sending Live traffic.
+
+## Use the right key
+
+Test keys begin with `qm_test_`.
+Live keys begin with `qm_live_`.
+The key environment must match the environment whose data you intend to access.
+
+```ts
+const quotamint = new QuotaMint({
+  apiKey: process.env.QUOTAMINT_API_KEY,
+  baseUrl: process.env.QUOTAMINT_BASE_URL,
+});
+```
+
+Do not select the environment based only on a request parameter.
+Select the correct server-side credential in the deployment environment.
+
+## Promotion checklist
+
+Before switching a service to Live:
+
+1. Confirm the plan and feature keys are final.
+2. Create Live customer records or synchronize them from your application.
+3. Create a Live API key and store it in your production secret manager.
+4. Verify the Live runtime URL.
+5. Send one controlled request and confirm the result in the dashboard.
+6. Remove test credentials from production configuration.
+
+<Warning>
+  Never use a Live key in local development or expose either key to a browser or mobile client.
+</Warning>

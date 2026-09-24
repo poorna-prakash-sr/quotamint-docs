@@ -1,20 +1,53 @@
 ---
 title: "Introduction"
-description: "Welcome to your project"
+description: "Build plan-based access, usage metering, and credit systems for your SaaS product."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+# QuotaMint documentation
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+QuotaMint helps you control what each customer can use in your application.
+You define plans and features in the dashboard, then call QuotaMint from your backend when a customer uses a metered action.
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+QuotaMint covers:
+
+- Feature access and plan entitlements
+- Credit balances and per-use charges
+- Usage-only metrics such as tokens, minutes, or documents
+- Customer plan assignment
+- Test and Live environments
+- Usage history, alerts, and signed webhooks
+
+QuotaMint does **not** process payments or act as an API gateway.
+Keep your existing billing provider and call QuotaMint after your application has decided that a customer or organization changed plans.
+
+<Note>
+  QuotaMint is currently a developer-preview product. Features, availability, and plan limits may change before production launch.
+</Note>
+
+## Choose where to start
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create a project, define a feature, and send your first usage request.
+  </Card>
+  <Card title="Core concepts" icon="book-open" href="/concepts">
+    Learn how workspaces, projects, plans, features, and customers fit together.
+  </Card>
+  <Card title="API reference" icon="brackets-curly" href="/api/overview">
+    Integrate with the REST API or the TypeScript SDK.
+  </Card>
+  <Card title="Limits and plans" icon="gauge" href="/limits">
+    Compare quotas, retention, request rates, and feature availability.
+  </Card>
+</CardGroup>
+
+## How the integration works
+
+1. You create a workspace and project in the dashboard.
+2. You create plans and features, including the credit cost for each credit-based feature.
+3. You create customers using the identifiers already used by your application.
+4. Your backend calls `consume` when a customer performs a chargeable action.
+5. Your application uses the response to allow the action, show an upgrade message, or retry safely.
+
+Your backend remains responsible for authentication, payments, and the application action itself.
+QuotaMint supplies the usage decision and records the result.

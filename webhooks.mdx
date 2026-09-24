@@ -1,0 +1,86 @@
+---
+title: "Webhooks"
+description: "Receive signed asynchronous notifications for usage, credits, plans, and alerts."
+---
+
+# Webhooks
+
+Webhooks let your backend react to QuotaMint events without polling the dashboard.
+Create an endpoint from **Webhooks**, choose the event types it should receive, and save the signing secret when it is shown.
+
+Endpoints must use HTTPS on the standard HTTPS port.
+
+## Available events
+
+| Event | When it is sent |
+| --- | --- |
+| `usage.consumed` | A usage request records a successful consumption or usage event. |
+| `credits.updated` | A credit grant, adjustment, refund, or other balance update is applied. |
+| `customer.plan_changed` | A customer's plan or active status changes. |
+| `usage.threshold_reached` | A configured usage threshold is reached. |
+| `credits.low` | A customer's balance reaches a configured low-credit threshold. |
+| `customer.credits_depleted` | A customer's credit balance reaches zero after a charge. |
+
+The event body is JSON and includes a `type` field.
+Payload fields depend on the event type and can include `customerId`, `projectId`, `environment`, `quantity`, `creditsUsed`, `balance`, `plan`, or `eventId`.
+Treat unknown fields as forward-compatible additions.
+
+## Delivery headers
+
+QuotaMint sends these headers:
+
+| Header | Description |
+| --- | --- |
+| `X-QuotaMint-Delivery` | Unique delivery identifier. |
+| `X-QuotaMint-Event` | Event type. |
+| `X-QuotaMint-Timestamp` | Unix timestamp used for signature verification. |
+| `X-QuotaMint-Signature` | HMAC-SHA256 signature in the form `sha256=...`. |
+
+The request body must be read as raw bytes for signature verification.
+Compute the signature over:
+
+```text
+<timestamp>.<raw request body>
+```
+
+Use the endpoint's signing secret as the HMAC-SHA256 key, then compare the result in constant time.
+Reject requests with an invalid signature or an unacceptable timestamp before processing the event.
+
+## Example verification
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verifyQuotaMintWebhook(
+  rawBody: string,
+  timestamp: string,
+  signature: string,
+  secret: string,
+) {
+  const expected = `sha256=${createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex")}`;
+
+  const actualBytes = Buffer.from(signature);
+  const expectedBytes = Buffer.from(expected);
+
+  return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
+}
+```
+
+Pass the raw request body to your verifier before JSON parsing.
+
+## Retries and endpoint status
+
+QuotaMint delivers events asynchronously.
+A `2xx` response marks a delivery as successful.
+Failed deliveries retry automatically, and the dashboard shows delivery status and attempt history.
+
+Make your webhook handler idempotent using `X-QuotaMint-Delivery` or an event identifier.
+A handler should acknowledge the request quickly and perform long-running work asynchronously.
+
+## Rotate a signing secret
+
+Rotate a secret from the endpoint actions menu when you need to replace it.
+Save the new secret immediately and deploy the verifier before relying on the new value.
+The dashboard does not show a secret again after creation or rotation.

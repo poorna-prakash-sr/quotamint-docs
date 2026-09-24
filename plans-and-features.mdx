@@ -1,0 +1,67 @@
+---
+title: "Plans and features"
+description: "Model product access and usage costs with plans, entitlements, and feature keys."
+---
+
+# Plans and features
+
+Plans define the customer experience.
+Features define the actions that your backend can allow, charge, or measure.
+
+## Create a feature first
+
+Create a feature from **Features** before you create a plan.
+Give it a human-readable name and keep its technical key stable after your backend starts sending it.
+
+### Credit features
+
+Use a credit feature when each use should reduce the customer's balance.
+Set a credit cost per unit.
+The total charge is:
+
+```text
+credit cost per unit × quantity
+```
+
+Example: a `video_generation` feature with a cost of 50 charges 100 credits when `quantity` is 2.
+
+### Metered features
+
+Use a metered feature when you need usage history without a credit charge.
+Examples include tokens, storage, minutes, API calls, or documents.
+Send the measured quantity to `events`.
+
+### Boolean features
+
+Use a boolean feature for access flags such as `priority_support` or `advanced_exports`.
+Your backend can call `check` or `consume` to evaluate access.
+
+## Create a plan
+
+A plan includes:
+
+- A stable plan key
+- A monthly credit allowance
+- An entitlement decision for each feature
+- A description for your team
+
+Enable only the features that customers on the plan can use.
+A disabled feature produces a denied usage decision.
+
+Monthly credits are granted once per active customer each calendar month.
+Unused balance remains available for future usage.
+
+## Assign plans to customers
+
+Create a customer with an optional plan, or assign a plan later from the customer detail page.
+When your billing system changes a subscription, apply the matching plan in the same environment.
+
+<Note>
+  QuotaMint is billing-provider independent. It does not process payments or decide when a subscription should change.
+</Note>
+
+## Archive instead of changing keys
+
+Treat plan and feature keys as API contracts.
+If you no longer offer a plan or feature, archive it instead of reusing its key for a different meaning.
+This keeps historical usage understandable and prevents an old integration from silently charging a new product action.

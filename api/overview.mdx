@@ -1,0 +1,79 @@
+---
+title: "API overview"
+description: "Connect your backend to QuotaMint with the REST API or TypeScript SDK."
+---
+
+# API overview
+
+QuotaMint's public API is designed for server-to-server usage decisions.
+Use the TypeScript SDK when you want a typed client, or call the REST endpoints directly from any backend language.
+
+## Base URL
+
+Copy the runtime URL for your project from the dashboard's **Developers** page.
+Use that URL as the base for every request.
+
+```text
+https://your-runtime.example.com
+```
+
+## Authentication
+
+Send the API key as a Bearer token:
+
+```http
+Authorization: Bearer qm_test_replace_with_your_key
+```
+
+Use a Test key for Test data and a Live key for Live data.
+Keep the key on your backend and never log it.
+
+## Public endpoints
+
+| Method | Path | Use it for |
+| --- | --- | --- |
+| `POST` | `/v1/check` | Preview access and affordability without changing usage or balance. |
+| `POST` | `/v1/consume` | Enforce access and charge a credit feature when allowed. |
+| `POST` | `/v1/events` | Record usage that does not change credits. |
+
+QuotaMint also exposes health endpoints for deployment monitoring. They do not require a project API key.
+
+## Request conventions
+
+- Send exactly one JSON object in the request body.
+- Set `Content-Type: application/json`.
+- `quantity` defaults to `1` for `check` and `consume`.
+- `consume` requires `idempotencyKey`.
+- `events` accepts an optional `idempotencyKey`.
+- `metadata`, when present, must be a JSON object.
+
+## Decision responses
+
+A decision is returned with HTTP `200` whether it is allowed or denied.
+Check the `allowed` field; do not infer the result from the HTTP status alone.
+
+```json
+{
+  "allowed": true,
+  "customerId": "customer_123",
+  "feature": "image_generation",
+  "quantity": 1,
+  "creditsUsed": 10,
+  "creditsRemaining": 490
+}
+```
+
+Denied decisions include a `reason` such as `feature_not_entitled`, `customer_not_found`, or `insufficient_credits`.
+
+## Retries
+
+Give each logical operation one stable idempotency key.
+If the request times out, retry the same operation with the same key.
+A repeated request with the same key and payload returns the original decision instead of charging twice.
+
+Reusing a key with a different payload returns `409 idempotency_key_reused`.
+
+## Request IDs
+
+You can send an `X-Request-ID` header to correlate a request with your application logs.
+The response includes the resulting `requestId` when an error occurs.

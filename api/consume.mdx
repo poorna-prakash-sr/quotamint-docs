@@ -1,0 +1,90 @@
+---
+title: "Consume credits"
+description: "Enforce feature access and charge credits with a retry-safe usage request."
+api: "POST /v1/consume"
+---
+
+# Consume credits
+
+`POST /v1/consume` is the authoritative usage operation.
+It evaluates the customer's access, charges the configured credit cost when allowed, and records the usage decision.
+
+Use this endpoint when your application is about to perform a chargeable action.
+
+## Request
+
+```bash
+curl -X POST "$QUOTAMINT_BASE_URL/v1/consume" \
+  -H "Authorization: Bearer $QUOTAMINT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerId": "customer_123",
+    "feature": "image_generation",
+    "quantity": 1,
+    "idempotencyKey": "image-job-8472",
+    "metadata": {
+      "requestId": "req_123"
+    }
+  }'
+```
+
+### Request fields
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `customerId` | string | Yes | Your application's customer, user, or organization ID. |
+| `feature` | string | Yes | The feature key configured in the dashboard. |
+| `quantity` | integer | No | Number of units to charge. Defaults to `1`. |
+| `idempotencyKey` | string | Yes | Stable key for this logical operation. |
+| `metadata` | object | No | JSON context for usage history and reconciliation. |
+
+## Allowed response
+
+```json
+{
+  "allowed": true,
+  "customerId": "customer_123",
+  "feature": "image_generation",
+  "quantity": 1,
+  "creditsUsed": 10,
+  "creditsRemaining": 490
+}
+```
+
+Start the application action only after `allowed` is `true`.
+
+## Denied response
+
+```json
+{
+  "allowed": false,
+  "customerId": "customer_123",
+  "feature": "image_generation",
+  "quantity": 1,
+  "reason": "feature_not_entitled",
+  "creditsRemaining": 490
+}
+```
+
+Denials do not partially charge credits.
+
+## Idempotent retries
+
+Use the same key when retrying the same logical operation:
+
+```ts
+const result = await quotamint.consume({
+  customerId: "customer_123",
+  feature: "image_generation",
+  quantity: 1,
+  idempotencyKey: "image-job-8472",
+});
+```
+
+A replay with the same key and payload returns the original decision.
+A different payload with the same key returns `409 idempotency_key_reused`.
+Use a new key for a new operation.
+
+<Info>
+  Idempotency keys are scoped to the project and environment. Generate them where the logical work starts and persist them with the job that you retry.
+</Info>

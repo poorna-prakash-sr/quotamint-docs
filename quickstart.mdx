@@ -1,47 +1,120 @@
 ---
 title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+description: "Set up a project and send your first usage decision from a Node.js backend."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+# Quickstart
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide takes you from a new QuotaMint account to a server-side `consume` request.
 
 ## Prerequisites
 
-Before you begin, you must have:
+You need:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+- A QuotaMint account
+- Access to create a workspace, project, plans, features, and API keys
+- A Node.js backend, or any backend that can send HTTPS requests
 
-## Get started
+<Warning>
+  Never put a QuotaMint API key in browser, mobile, or other untrusted client code.
+  Store it in your backend environment and keep Test and Live keys separate.
+</Warning>
+
+## Create your project
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
-    ```bash
-    npm install your-package
-    ```
+  <Step title="Create a workspace">
+    Sign up, then create a workspace for your company or team.
+    A workspace contains your projects, members, account plan, and workspace-level limits.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
-
-    ```bash
-    your-cli init
-    ```
+  <Step title="Create a project">
+    Create a project for the product or service that will use QuotaMint.
+    New projects start in the Test environment.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
-    ```bash
-    your-cli start
-    ```
+  <Step title="Create a plan">
+    Add a plan and set its monthly credit allowance.
+    Monthly credits are granted once per active customer each calendar month.
+  </Step>
+  <Step title="Create a feature">
+    Add the product action that your backend will meter, such as `image_generation`.
+    Select a feature type and, for credit features, set the cost per unit.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Install the Node.js SDK
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+```bash
+npm install @quotamint/node
+```
+
+The SDK is for server-side Node.js applications. You can also use the REST API from any backend language.
+
+## Create a Test API key
+
+In the dashboard, open **API keys**, choose **Test**, and create a key.
+Copy the secret when it appears. QuotaMint shows the secret only once.
+
+Set it in your backend environment:
+
+```bash
+QUOTAMINT_API_KEY=qm_test_replace_with_your_key
+```
+
+Also set the runtime URL shown on the **Developers** page:
+
+```bash
+QUOTAMINT_BASE_URL=https://your-runtime.example.com
+```
+
+## Initialize the client
+
+```ts
+import { QuotaMint } from "@quotamint/node";
+
+const quotamint = new QuotaMint({
+  apiKey: process.env.QUOTAMINT_API_KEY!,
+  baseUrl: process.env.QUOTAMINT_BASE_URL!,
+});
+```
+
+## Charge a feature
+
+Call `consume` from the backend when your application is ready to perform the action.
+Use a stable idempotency key for the logical operation, not a new random key for every retry.
+
+```ts
+const decision = await quotamint.consume({
+  customerId: "customer_123",
+  feature: "image_generation",
+  quantity: 1,
+  idempotencyKey: "image-job-8472",
+});
+
+if (decision.allowed) {
+  // Start the image job.
+  console.log(`Charged ${decision.creditsUsed} credits`);
+} else if (decision.reason === "insufficient_credits") {
+  // Show an upgrade or top-up message.
+} else {
+  // The customer's plan does not allow this action.
+}
+```
+
+A successful response includes the remaining balance.
+A denied decision uses the same successful HTTP status and returns `allowed: false` with a reason.
+
+## Test before going Live
+
+Use the Test environment while you build your integration.
+Test customers, balances, usage, and API keys are separate from Live data.
+
+When you are ready:
+
+1. Create a Live API key.
+2. Add it to the production backend environment.
+3. Use the Live runtime URL and Live customer records.
+4. Keep the Test key available for development and staging.
+
+<Check>
+  You are ready when a backend request can consume a Test feature and the result appears in the dashboard usage history.
+</Check>

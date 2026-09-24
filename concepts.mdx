@@ -1,0 +1,93 @@
+---
+title: "Core concepts"
+description: "Understand the QuotaMint resource model before you integrate."
+---
+
+# Core concepts
+
+QuotaMint uses a small resource model so your team can manage configuration in the dashboard while your backend sends usage decisions.
+
+## Workspaces
+
+A workspace is your team and account boundary.
+It contains members, projects, account plan limits, and workspace-level settings.
+
+The account plan is charged per workspace.
+A person can belong to multiple workspaces, but only workspaces they own count toward their owned-workspace limit.
+
+## Projects
+
+A project represents one product or service that uses QuotaMint.
+Projects own:
+
+- Plans and features
+- Customers and customer balances
+- API keys
+- Usage history
+- Webhook endpoints
+
+Use separate projects when you need configuration or balances isolated from another product.
+
+## Environments
+
+Each project has **Test** and **Live** environments.
+Environment data is separate for API keys, customers, plan assignments, balances, usage, and runtime history.
+
+Project configuration, such as plans and features, is shared between the two environments.
+
+<Info>
+  A customer ID is not globally shared between environments. The same ID in Test and Live represents two separate customer records.
+</Info>
+
+## Plans
+
+A plan describes what a customer can use and how many monthly credits they receive.
+You can enable or disable each feature for each plan.
+
+A customer can have one active plan in an environment.
+Your application remains the source of truth for when a customer upgrades, downgrades, or leaves a plan.
+
+## Features
+
+A feature is a product action that QuotaMint evaluates.
+Each feature has a stable key that your backend sends in API requests.
+
+QuotaMint supports three feature types:
+
+| Type | Use it for | Credit balance changes? |
+| --- | --- | --- |
+| Credit | Charge a defined number of credits per unit | Yes |
+| Metered | Record usage such as tokens or minutes | No |
+| Boolean | Allow or deny access to a capability | No |
+
+For a credit feature, `quantity` multiplies the configured credit cost.
+For example, a feature that costs 2 credits costs 6 credits when `quantity` is 3.
+
+## Customers
+
+A customer is the user, organization, account, or other entity that consumes your product.
+Use the identifier already owned by your application.
+
+Customer IDs must be unique within a project and environment.
+QuotaMint does not require customer passwords or payment details.
+
+In the current preview, create customers and assign plans from the dashboard before sending usage.
+The public runtime endpoints do not create customer records automatically.
+
+## Usage decisions
+
+Use the API endpoints as follows:
+
+- `check` previews whether a customer can use a feature. It does not consume credits.
+- `consume` makes the usage decision and charges a credit feature when allowed.
+- `events` records usage without changing a credit balance.
+
+Use `consume` for enforcement.
+A previous `check` can become stale if another request changes the customer's balance or access.
+
+## Webhooks
+
+Webhooks notify your backend about usage, credit, plan, and alert events.
+They are sent asynchronously to an HTTPS endpoint and signed with a secret that you receive when you create the endpoint.
+
+See [Webhooks](/webhooks) for event types and verification guidance.

@@ -1,0 +1,62 @@
+---
+title: "Customers and credits"
+description: "Manage customer identities, balances, plan assignments, and usage history."
+---
+
+# Customers and credits
+
+QuotaMint keeps the customer identifier that your application already uses.
+You do not need to migrate customer authentication or payment data.
+
+In the current preview, create customers and assign plans from the dashboard.
+Your application can then use the public runtime API to record usage and enforce feature access.
+
+## Customer lifecycle
+
+A customer can be:
+
+- **Active**: usage requests can be allowed when the customer has an eligible plan and balance.
+- **Inactive**: the balance and history remain available, but new usage requests are denied.
+- **Archived**: the customer is removed from normal active lists while its historical records remain available according to your retention period.
+
+Customer IDs cannot be changed after creation.
+If your application changes an identifier, create or synchronize a new customer record instead of silently reusing the old one.
+
+## Credit balances
+
+Credits can come from:
+
+- Monthly plan allocations
+- Manual grants or top-ups managed by your team
+- Credit adjustments or refunds
+- Charges created by successful `consume` requests
+
+A successful credit consumption returns `creditsUsed` and `creditsRemaining`.
+An insufficient balance returns a denied decision; it does not create a partial charge.
+
+## Monthly allocations
+
+Monthly included credits are applied once per active customer each calendar month.
+The account plan's monthly event limit is separate from the credits included in your product plans.
+
+Your account plan controls how much QuotaMint activity your workspace can record.
+Your product plan controls how many credits a customer receives.
+
+## Usage history
+
+The dashboard shows usage events, feature or event name, quantity, customer, environment, and timestamps.
+Use this history to answer:
+
+- Which customer used a feature?
+- Which feature consumed credits?
+- How much usage did a customer generate?
+- When did a balance reach zero?
+
+Retention depends on your workspace account plan.
+See [Limits and plans](/limits) for the current retention windows.
+
+## What QuotaMint does not store
+
+QuotaMint uses customer identifiers and optional display data for metering.
+It does not need your customers' passwords, card numbers, or payment credentials.
+Keep sensitive application data out of metadata unless you need it for usage context and your data policy allows it.

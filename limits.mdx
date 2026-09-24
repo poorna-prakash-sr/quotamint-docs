@@ -1,0 +1,67 @@
+---
+title: "Limits and plans"
+description: "Compare workspace quotas, runtime limits, retention, and account-plan capabilities."
+---
+
+# Limits and plans
+
+Account plans apply to a workspace.
+All plans include checks, consumption, credits, idempotency, Test and Live environments, and API authentication.
+
+Usage counters reset on the first day of each UTC calendar month.
+Plan changes do not erase data or reset counters.
+
+## Workspace plans
+
+| | Free | Pro | Scale |
+| --- | ---: | ---: | ---: |
+| Price per workspace | $0/month | $29/month | $79/month |
+| Monthly events | 5,000 | 2,000,000 | 10,000,000 |
+| Projects | 1 | 5 | No cap |
+| Active API keys per project and environment | 2 | 10 | No cap |
+| Team members | 1 | 5 | 20 |
+| Active webhooks | 1 | 5 | 20 |
+| Requests per minute per key | 60 | 600 | 3,000 |
+| Metadata per request | 2 KiB / 10 keys | 8 KiB / 30 keys | 32 KiB / 100 keys |
+| Usage history choices | 3 days | 7, 14, or 30 days | 30, 60, or 90 days |
+| Default usage history | 3 days | 30 days | 90 days |
+| Audit history | 3 days | 30 days | 90 days |
+
+Prices and availability may change during the developer preview.
+
+## Capability differences
+
+| Capability | Free | Pro | Scale |
+| --- | --- | --- | --- |
+| CSV exports | — | Yes | Yes |
+| JSON exports | — | — | Yes |
+| Usage alerts | — | Yes | Yes |
+| Low-credit alerts | — | Yes | Yes |
+| Custom alert thresholds | — | Yes | Yes |
+| Environment-specific configuration | Basic | Per environment | Per environment |
+| Project roles | Workspace role | Admin and Developer | Admin, Developer, and Viewer |
+| Credit top-ups | Basic | Standard | Standard |
+
+## Request limits
+
+For the public runtime API:
+
+- `customerId`: up to 255 characters
+- `feature` and `event`: up to 120 characters
+- `quantity`: integer from 1 through 1,000,000
+- `idempotencyKey`: up to 255 characters
+- Request metadata: a JSON object within your plan's byte and key limits
+- Request body: up to 64 KiB by default
+- Event timestamps: no more than five minutes in the future
+
+Identifiers cannot contain whitespace or control characters.
+
+## What happens at a limit
+
+- A request-rate limit returns HTTP `429` with `rate_limited` and a `Retry-After` header.
+- A monthly event limit returns HTTP `429` with `workspace_usage_limit_exceeded`.
+- A project, API-key, member, or webhook capacity limit blocks new creation while existing resources remain available.
+- Downgrading does not delete existing projects, keys, members, endpoints, usage, or audit records.
+- Retained data outside the selected history window is not queryable or exportable from the dashboard.
+
+See [Errors](/api/errors) for response handling.
