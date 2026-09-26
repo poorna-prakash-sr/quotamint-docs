@@ -1,13 +1,33 @@
 ---
 title: "Idempotency and retries"
-description: "Make network retries safe without double charging customers"
+description: "Why the idempotency key exists, how to use it, and what it cannot do for you"
 ---
 
-`consume` requires an idempotency key. `events` accepts one. The key identifies a logical operation, not a network attempt.
+`consume` moves credits, so the same request must never charge twice — no matter how badly the network behaves. That is what the idempotency key is for. This page explains why it exists, how to use it, and — just as important — where its protection ends.
+
+`consume` requires a key. `events` accepts one. `check` takes none, because it changes nothing.
+
+## Why idempotency exists
+
+Charging a customer and telling you about it are two separate events. Usually they arrive together. Sometimes they don't:
+
+- The charge commits on our side, and the response is lost in transit — a dropped connection, a rebalancing load balancer, your own client timeout firing first.
+- Your worker dies mid-flight and the queue redelivers the job, maybe minutes later, maybe to a different machine.
+- Your deploy restarts while a request is in the air.
+
+Now what? You never saw the answer, so from where you sit the outcome is **unknown**. It may have happened; it may not have. Retrying blind is dangerous: if the first attempt did charge, a naive retry charges the customer twice. Not retrying is dangerous the other way: if the first attempt never landed, the customer got the feature free.
+
+The idempotency key turns "unknown" into a question QuotaMint can answer the same way every time. You name the operation — one key per thing you intend to charge for — and the rule becomes:
+
+> **Same key + same payload = the same answer, charged at most once.**
+
+If the first attempt went through, the retry replays the recorded answer without charging again. If it never landed, the retry performs it and charges once. Either way, the customer is charged exactly once for the thing they got.
+
+Think of the key as the receipt number for one billable intention. Present the same receipt number twice and the cashier hands back the receipt from the first purchase; they don't ring you up twice.
 
 ## Pick a stable key
 
-Use an identifier from your own job or command:
+Use an identifier from your own job or command — something that already exists and already means "this unit of work":
 
 ```text
 image_job_8472
@@ -15,7 +35,12 @@ checkout_entitlement_order_901
 agent_run_2026_09_17_0004
 ```
 
-Do not generate a new random key for every retry. If the first response is lost, a new key would represent a new charge.
+Two habits make this work:
+
+1. **Decide the key before the first attempt.** Not after a failure — by then you're choosing under pressure.
+2. **Persist it before the first attempt.** Write it down where the job lives (same row, same document). A key that only lives in memory dies with the process, and the retry after a crash invents a new one — which is exactly the double-charge bug.
+
+Never generate a fresh random key per attempt. A UUID is fine **only** if it is stored before the call and read back on every attempt.
 
 ## Replay behavior
 
@@ -28,26 +53,33 @@ For `consume`, this means:
 - One ledger entry
 - Byte-identical responses for every replay
 
-Terminal denials are stored too. If a consume is denied for insufficient credits, retrying the same key returns the original denial even if the balance later changes. Use a new key for a new attempt.
+Two details worth knowing:
 
-## Conflicts
+- A retry may reformat `metadata` (whitespace, key order) and still replay — the content is what counts.
+- `creditsRemaining` in a replayed response is the balance *as it was at the first charge*. Correct for accounting; do not use it to refresh a live balance display.
 
-The following return `409 idempotency_key_reused`:
+## The limits — read this part twice
 
-- Same key with a different payload
-- Same key against a different endpoint
-- Same key across environment prefixes
+The key is powerful but not magic. Four boundaries, in order of how often they bite:
 
-The request hash uses canonical JSON, so object key order and insignificant whitespace do not create false conflicts.
+**1. The replay window is 24 hours.** Same key, same payload, within 24 hours: replays forever (for the window). After 24 hours the record is gone, and the same key becomes a **new** operation that charges again. So keep your own job records — and the keys inside them — for at least 24 hours. If your system redelivers jobs after a longer retention window, deduplicate on your side too; the key will not save you past the window.
+
+**2. A denial is an answer, and it occupies the key.** If a consume is denied (say, `insufficient_credits`), that denial is recorded just like a success. Retrying the same key after the customer tops up returns the *old denial*, not a fresh decision — for the full 24 hours. The rule that keeps this straight: **a new attempt is a new key.** Name it `job_8472:attempt_2` and move on. (A `400` is different: it is rejected before anything is recorded, so the key is untouched — fix the payload and retry with the same key.)
+
+**3. Same key with different content is a conflict, not a correction.** Reusing a key with a changed payload, a different endpoint, or the other environment returns `409 idempotency_key_reused` and charges nothing. This is QuotaMint telling you two different intentions share one receipt number — fix the key derivation. Retrying a 409 is always pointless.
+
+**4. The key covers the charge, not your side effects.** QuotaMint guarantees the credits move once per key. It cannot make *your* side effects idempotent: if a retried job re-sends the email, re-renders the image, or re-posts the webhook, that's your application logic running twice behind one successful charge. Keep the key with your job record so any retry picks up the same intention, and make the rest of the job naturally re-runnable or guarded on your side.
+
+One more scoping fact: keys are independent across environments and endpoints. The same key used with a `qm_test_` key and a `qm_live_` key are two separate operations — each may charge in its own environment. Namespace your key store if it is shared across environments.
 
 ## What to retry
 
-Retry with the same key for transient failures:
+Retry with the same key — always the same key — for transient failures:
 
-- `500 internal_error`
-- `503 service_unavailable`
-- Network timeouts where the server outcome is unknown
+- `500 internal_error` and `503 service_unavailable`, with backoff
+- `429 rate_limited`, after waiting `Retry-After` seconds
+- Network failures and client timeouts: the outcome is unknown, and the same key is what makes the retry safe
 
-Do not retry a `400`, `401`, `403`, `404`, or `409` without correcting the request. For `429 rate_limited`, wait for the `Retry-After` header and retry the same logical operation.
+Do not retry a `400`, `401`, `403`, `404`, or `409` without correcting the request first. A denial (`allowed: false`, HTTP 200) is not a failure to retry at all — it's an answer; see the limits above.
 
-Idempotency records are kept for 24 hours and then pruned.
+Full status-by-status guidance is in [errors and denial reasons](/api/errors).

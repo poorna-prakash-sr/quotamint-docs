@@ -35,16 +35,30 @@ It keeps customer plans, feature access, usage, and credits in one place. Your a
 
 QuotaMint is **not** a payment gateway, checkout system, tax service, or API gateway. Keep Stripe, Razorpay, Paddle, Lemon Squeezy, or your own billing system for payments. When a subscription changes, assign the resulting plan to the customer in the QuotaMint dashboard.
 
-## Two surfaces, one model
+## Two doors into one system
 
-The dashboard is where your team configures everything. The runtime API is what your backend calls to make usage decisions.
+Everything you configure and everything your code asks about lives in one place: the same customers, plans, features, credits, and usage records. You reach them through two doors.
+
+**The dashboard is the door for people.** Your team sets up plans and features, creates customers and assigns plans, adds credits, mints and rotates API keys, and reads usage and audit history. If you can point at it on a screen, it happens here.
+
+**The API is the door for your code.** Three endpoints, called at the moment of use:
+
+- `/v1/check` — "could this customer use this feature right now?" (for UI hints; changes nothing)
+- `/v1/consume` — "let them use it and charge the credits" (the decision your backend acts on)
+- `/v1/events` — "record that this happened" (for usage that has no credit price)
+
+The connection between the two doors is the point: what your team configures in the dashboard is exactly what the API enforces, per customer, per environment. Assign the `pro` plan in the dashboard, and the next `consume` for that customer costs what `pro` says it costs. No redeploy, no code change.
+
+In practice, your product looks like this:
 
 ```text
-  Your backend ────────────── Runtime API ────────────── Your dashboard
-  billing, product logic       check, consume, events    workspaces, plans, features
-  idempotent requests          atomic credits + usage     customers, credits, usage views
+  Browser ──► your backend ──► QuotaMint API
+                 (API key)         check / consume / events
+
+  your team ──► QuotaMint dashboard
+                 plans, features, customers, credits
 ```
 
-Your frontend talks only to your own backend. Your backend calls the runtime API with a project API key, and your team manages plans, features, customers, and credits in the dashboard.
+Your frontend talks only to your own backend. Your backend calls the API with a project key that stays on the server — the browser never sees it. Your team works in the dashboard at their own pace; your code works at request speed.
 
-Use the [quickstart](/quickstart) for the shortest path, then read [idempotency](/guides/idempotency) before sending production traffic.
+That is the whole mental model: configure once in the dashboard, ask at the moment of use, act on the answer. The [quickstart](/quickstart) walks the shortest path through it; read [idempotency](/guides/idempotency) before sending production traffic.
