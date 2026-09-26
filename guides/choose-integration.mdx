@@ -13,29 +13,28 @@ for the same working pattern in Node.js, Python, Go, Java, PHP, Ruby, C#, and Ru
 
 ```text
 1. Your billing provider confirms a subscription change
-2. Your backend syncs the customer's QuotaMint plan
+2. Your team assigns the matching QuotaMint plan to the customer
 3. A product action reaches your backend
 4. Your backend calls /v1/consume with a stable idempotency key
 5. QuotaMint returns allowed or denied
 6. Your backend performs the work only after allowed=true
 ```
 
-Stripe, Razorpay, Paddle, Lemon Squeezy, or a custom billing system remains the source of truth for payment status. Your webhook handler translates that status into a QuotaMint plan and credit grant.
+Stripe, Razorpay, Paddle, Lemon Squeezy, or a custom billing system remains the source of truth for payment status. When that status changes, a teammate or your billing automation assigns the matching QuotaMint plan in the dashboard.
 
-## When to use each endpoint
+## When to use each surface
 
-| Need | Endpoint | Mutates state |
+| Need | Where | Mutates state |
 | --- | --- | --- |
 | Show whether an action is available | `POST /v1/check` | No |
 | Authorize and charge a feature | `POST /v1/consume` | Yes |
 | Record usage without charging credits | `POST /v1/events` | Yes |
-| Assign a plan from your backend | `POST /internal/v1/customers/sync-plan` | Yes |
-| Add purchased or manual credits | `POST /internal/v1/credits/grant` | Yes |
-| Refund or adjust a balance | `POST /internal/v1/credits/adjust` | Yes |
+| Assign a plan to a customer | Dashboard: **Customers** | Yes |
+| Add purchased or manual credits | Dashboard: customer detail | Yes |
 
 ## Do not put QuotaMint in the browser
 
-Project API keys identify a project and can spend credits. Keep them on your server. The internal credential has broader write access and must never leave your control plane.
+Project API keys identify a project and can spend credits. Keep them on your server.
 
 Your frontend can call your own backend, and your backend can call QuotaMint. Return only the decision and information your UI needs.
 
@@ -44,12 +43,11 @@ Your frontend can call your own backend, and your backend can call QuotaMint. Re
 When a Stripe or Razorpay subscription becomes active:
 
 1. Verify the provider webhook signature.
-2. Look up your internal customer ID.
-3. Map the provider price or plan to a QuotaMint plan key.
-4. Call `sync-plan`.
-5. Grant purchased credits with a unique `referenceId` if the subscription includes a top-up.
+2. Map the provider price or plan to a QuotaMint plan key.
+3. Assign the plan to the customer in the dashboard (or automate this step in your billing workflow).
+4. Add any separately purchased credits from the customer's dashboard page.
 
-If the billing event is delivered twice, the same plan sync is safe to repeat. For grants, always provide a stable `referenceId` so the ledger cannot apply the same grant twice.
+If the billing event is delivered twice, assigning the same plan again is safe to repeat: an active plan assignment is idempotent. Credit changes recorded in the dashboard are additive and each is kept in the ledger, so review the balance before adding a manual top-up twice.
 
 ## Choosing a credit model
 

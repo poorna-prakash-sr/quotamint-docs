@@ -28,9 +28,9 @@ The preview runs at `http://localhost:3000`.
 - Keep test and live examples visibly separate.
 - Use QuotaMint for the product name; Mintlify is the publishing platform.
 - Keep Stripe, Razorpay, Paddle, and similar providers in the billing-integration context. QuotaMint does not process payments.
-- Do not document internal-only internals (dashboard session internals, worker scheduling) on
-  integration-facing pages; internal `/internal/v1/*` routes are documented only as the control
-  plane's own surface.
+- This site is customer-facing only. Never document QuotaMint internals: no internal API routes,
+  no self-hosting or deployment instructions, no operator endpoints (health, ready, metrics), no
+  environment variables, no storage or worker implementation details.
 - For runtime changes, update the API reference and the relevant guide together.
 
 ## Publishing

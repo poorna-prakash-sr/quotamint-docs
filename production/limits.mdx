@@ -28,11 +28,11 @@ A full window returns `429 rate_limited`, a `Retry-After` header, and `retryAfte
 
 ## Monthly event capacity
 
-The workspace account plan also limits monthly runtime events. The runtime reserves capacity atomically before writing usage. Idempotent replays do not claim a second event.
+The workspace account plan also limits monthly runtime events. Idempotent replays do not claim a second event slot.
 
 ## Credit concurrency
 
-A balance deduction is one conditional database update. If twenty concurrent calls compete for a balance of ten credits at a ten-credit cost, exactly one can succeed. The transaction writes the usage event and ledger row only for the winner.
+Concurrent consumes cannot overdraw a balance. If twenty calls compete for a balance of ten credits at a ten-credit cost, exactly one succeeds and the other nineteen are denied with `insufficient_credits` — no partial charges, no negative balance.
 
 ## Idempotency concurrency
 
@@ -40,4 +40,4 @@ Concurrent requests with the same key wait for the original owner to finish and 
 
 ## Project isolation
 
-Every runtime query includes the project resolved by the API key. A customer ID, plan, feature, or idempotency key from another project cannot be selected by changing the request body.
+The API key resolves the project for every request. A customer ID, plan, feature, or idempotency key from another project cannot be selected by changing the request body.

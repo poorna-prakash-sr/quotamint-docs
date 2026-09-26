@@ -1,6 +1,6 @@
 ---
 title: "Troubleshooting"
-description: "Diagnose authentication, denial, retry, and deployment failures"
+description: "Diagnose authentication, denial, retry, and delivery failures"
 ---
 
 ## `401 invalid_api_key`
@@ -12,15 +12,13 @@ Check that:
 - The key has not been revoked.
 - `qm_test_` is used for test traffic and `qm_live_` for production.
 
-Do not send the internal secret to `/v1/*`.
-
 ## `200 allowed: false`
 
 This is a product decision, not a transport failure. Inspect `reason`:
 
-- `no_active_plan`: sync the customer plan.
+- `no_active_plan`: assign a plan to the customer.
 - `feature_not_entitled`: update the plan entitlement.
-- `insufficient_credits`: grant or top up credits, or show an upgrade path.
+- `insufficient_credits`: top up credits, or show an upgrade path.
 - `customer_inactive`: restore the customer according to your billing state.
 
 ## `409 idempotency_key_reused`
@@ -37,16 +35,14 @@ The workspace's monthly account allowance is full. Upgrade the account plan or w
 
 ## `503 service_unavailable`
 
-The runtime could not reach PostgreSQL, or the project's request budget expired. Retry a `consume` with the same idempotency key. Check `/ready`, database connectivity, pool saturation, and runtime logs using the returned `requestId`.
+The runtime could not complete the decision within its budget, or a dependency is temporarily unavailable. The outcome of the operation is unknown: retry a `consume` with the same idempotency key. Contact support with the returned `requestId` if it persists.
 
 ## Webhooks are not delivered
 
 Confirm that:
 
-- `WEBHOOK_ENCRYPTION_KEY` is configured identically for API and worker.
 - The endpoint is public HTTPS and does not resolve to a private address.
 - The endpoint is active and subscribed to the event type.
-- The worker is running and can reach the destination.
 - Your receiver returns `2xx` quickly.
 
-Use the dashboard delivery state and runtime logs to distinguish pending, retrying, and failed deliveries.
+Use the dashboard delivery state to distinguish pending, retrying, and failed deliveries, and contact support with the delivery ID when a failure does not resolve.

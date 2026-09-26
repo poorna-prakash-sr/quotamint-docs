@@ -8,7 +8,6 @@ Before production traffic, verify each item below.
 ## Credentials
 
 - Store project keys in a server-side secret manager.
-- Keep `INTERNAL_API_SECRET` out of browsers and customer-facing services.
 - Use separate test and live secrets.
 - Rotate keys by creating the replacement before revoking the old key.
 - Never log `Authorization` headers, request bodies, metadata, or webhook secrets.
@@ -32,8 +31,8 @@ Before production traffic, verify each item below.
 
 ## Data isolation
 
-Projects are the runtime tenant boundary. Use one project per environment when balances must not mix. Never let a customer choose `projectId` for a public request; the API key establishes it.
+Projects are the tenant boundary. Use one project per environment when balances must not mix. A public request can never choose a project or environment in its body; the API key establishes them.
 
 ## Operational stop switches
 
-A disabled project returns `403 project_disabled`. Build a clear fallback path in your product and alert on repeated `503` responses. The current runtime does not implement fail-open semantics, so do not assume a disabled or unavailable project will allow traffic.
+A disabled project returns `403 project_disabled`. Build a clear fallback path in your product and alert on repeated `503` responses: a disabled or unavailable runtime does not allow traffic.

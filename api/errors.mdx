@@ -10,11 +10,12 @@ Non-decision errors use one stable shape:
 ```json
 {
   "error": {
-    "code": "insufficient_credits",
-    "message": "The adjustment would push the customer balance below zero.",
+    "code": "metadata_limit_exceeded",
+    "message": "Metadata exceeds this workspace plan's limits.",
     "details": {
-      "requested": "-150",
-      "remaining": "100"
+      "plan": "FREE",
+      "bytes": 4096,
+      "byteLimit": 2048
     }
   },
   "requestId": "9f2c4a1b7d3e5f608192a3b4c5d6e7f8"

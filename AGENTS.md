@@ -16,8 +16,8 @@
 
 - **QuotaMint** — the product name; Mintlify is only the publishing platform.
 - **Runtime API** — the machine-facing data plane: `/v1/check`, `/v1/consume`, `/v1/events`.
-- **Internal API** — server-only `/internal/v1/*` routes for the control plane; never suggested as a
-  customer integration surface.
+- Internal API routes (`/internal/v1/*`) exist in the product but are **never documented** on this
+  site; the docs are customer-facing only.
 - **Account plan** — Free/Pro/Scale, applied to a *workspace*. **Plan** — a product plan integrators
   create for *their* customers. Never use the two interchangeably.
 - QuotaMint has **no SDK**. Describe every integration as plain REST; the contract source is
@@ -34,8 +34,7 @@
 ## Content boundaries
 
 - Document implemented behavior only. If the runtime does not do it, say so or leave it out.
-- Do not expose internal implementation details on integration-facing pages: no internal error
-  internals, no worker scheduling internals, no dashboard session code paths.
-- `/internal/v1/*` routes are documented only as the control plane's own surface, never as a path a
-  customer's app should call.
+- Do not expose internal implementation details: no internal API routes, no deployment or
+  self-hosting docs, no operator endpoints, no environment variables, no storage, worker, or
+  session implementation details.
 - Credit amounts are decimals: described with "up to six decimal places", never as floats.

@@ -49,10 +49,10 @@ Credits are exact decimal units. A feature can cost fractional credits, and bala
 
 ## Environment
 
-The schema has `DEVELOPMENT`, `STAGING`, and `PRODUCTION`. The API key prefix exposes the important distinction:
+The API key prefix names the environment:
 
-- `qm_test_...` maps to development and staging
-- `qm_live_...` maps to production
+- `qm_test_...` maps to the Test environment (development and staging)
+- `qm_live_...` maps to the Live environment (production)
 
 The dashboard labels these as **Test** and **Live**. Customers, plans, features, and balances are project-scoped, not environment-scoped. Use separate projects when test and live balances must be isolated.
 

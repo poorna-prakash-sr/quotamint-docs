@@ -3,7 +3,7 @@ title: "Webhooks"
 description: "Receive signed usage, credit, plan, and alert events"
 ---
 
-Webhooks notify your backend when QuotaMint records a meaningful usage or credit state change. Configure endpoints from the dashboard or through the internal API.
+Webhooks notify your backend when QuotaMint records a meaningful usage or credit state change. Configure endpoints in the dashboard.
 
 ## Event types
 
@@ -24,9 +24,7 @@ Subscribe an endpoint only to the events it needs. An endpoint can be project-wi
 - The destination must use public HTTPS.
 - Loopback, private, link-local, multicast, and unspecified addresses are rejected.
 - Redirects are not followed during delivery.
-- The signing secret is returned only when the endpoint is created or its secret is rotated.
-
-Webhook configuration and delivery require `WEBHOOK_ENCRYPTION_KEY`. If it is unset, runtime usage calls still work but endpoint configuration and delivery are disabled.
+- The signing secret is shown only when the endpoint is created or its secret is rotated.
 
 ## Signature verification
 
@@ -52,7 +50,7 @@ Preserve the raw body. Do not verify a re-serialized JSON value.
 
 ## Delivery behavior
 
-The worker claims pending deliveries using `SKIP LOCKED`, signs the exact payload, sends the request, and records the result. Failed deliveries are retried at 1 minute, 5 minutes, 30 minutes, 2 hours, and 8 hours, then marked `FAILED` after the sixth attempt.
+Failed deliveries are retried at 1 minute, 5 minutes, 30 minutes, 2 hours, and 8 hours, then marked `FAILED` after the sixth attempt.
 
 Your handler should:
 

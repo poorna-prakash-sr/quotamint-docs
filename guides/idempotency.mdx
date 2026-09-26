@@ -50,4 +50,4 @@ Retry with the same key for transient failures:
 
 Do not retry a `400`, `401`, `403`, `404`, or `409` without correcting the request. For `429 rate_limited`, wait for the `Retry-After` header and retry the same logical operation.
 
-Idempotency records are retained for `IDEMPOTENCY_RETENTION`, which defaults to 24 hours. The worker prunes expired records.
+Idempotency records are kept for 24 hours and then pruned.

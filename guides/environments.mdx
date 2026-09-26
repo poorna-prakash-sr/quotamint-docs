@@ -5,10 +5,10 @@ description: "Keep development, staging, and production traffic separated"
 
 QuotaMint uses API-key prefixes to prevent accidental environment mixing.
 
-| Dashboard label | Schema value | Key prefix | Use |
-| --- | --- | --- | --- |
-| Test | `DEVELOPMENT` or `STAGING` | `qm_test_` | Local development and staging |
-| Live | `PRODUCTION` | `qm_live_` | Production traffic |
+| Dashboard label | Key prefix | Use |
+| --- | --- | --- |
+| Test | `qm_test_` | Local development and staging |
+| Live | `qm_live_` | Production traffic |
 
 A live key cannot authenticate against a test environment, and a test key cannot authenticate against live data. A prefix/environment mismatch returns `401`.
 
@@ -31,7 +31,7 @@ qm_test_<32 bytes of random base64url data>
 qm_live_<32 bytes of random base64url data>
 ```
 
-Store the secret in a server-side secret manager. QuotaMint stores only the prefix and SHA-256 digest. It never logs or returns the plaintext again.
+Store the secret in a server-side secret manager. QuotaMint shows it once and never again — not in logs, not in the dashboard.
 
 ## Rotation
 
@@ -39,4 +39,4 @@ Create a replacement key, deploy it, confirm traffic uses it, then revoke the ol
 
 ## Project disable switch
 
-A disabled project returns `403 project_disabled` from the runtime. The setting is reversible and is useful as an operational stop switch. Build a clear customer-facing fallback for this case; the current runtime does not implement a project fail-open mode.
+A disabled project returns `403 project_disabled` from the runtime. The setting is reversible and is useful as an operational stop switch. Build a clear customer-facing fallback for this case.
