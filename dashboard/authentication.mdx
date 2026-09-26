@@ -23,7 +23,9 @@ Keep `AUTH_SECRET` stable during normal deployments and rotate it deliberately d
 
 ## OAuth account linking
 
-OAuth sign-in does not silently link to an existing account created through another method. If the email already belongs to an account, sign in using the original method. The dashboard reports the account-linking error instead of merging identities without an explicit flow.
+A Google sign-in whose verified email already belongs to an account created with a password links the Google identity to that existing user and signs them in. The person keeps one account and can enter through either method. Google always verifies the account email it issues, which is what makes the automatic link safe.
+
+GitHub keeps the explicit flow: a GitHub profile can carry an unverified email, so automatic linking there could let an unverified email claim an existing user. If the email already belongs to an account, sign in using the original method. The dashboard reports an account-linking error instead of merging identities without a verified match.
 
 Email verification is not enforced in the current product. Do not treat an unverified email as proof of identity for a sensitive workflow without adding verification in your deployment.
 
