@@ -72,13 +72,7 @@
       }
     ],
     "global": {
-      "anchors": [
-        {
-          "anchor": "GitHub",
-          "href": "https://github.com/poorna-prakash-sr/quotamint",
-          "icon": "github"
-        }
-      ]
+      "anchors": []
     }
   },
   "navbar": {
@@ -100,10 +94,5 @@
       "cursor",
       "vscode"
     ]
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/poorna-prakash-sr/quotamint"
-    }
   }
 }

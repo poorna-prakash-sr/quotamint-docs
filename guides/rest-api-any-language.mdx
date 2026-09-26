@@ -21,9 +21,9 @@ The pattern has four steps. Get them right once, in one place, and every call si
 4. **Retry unknown outcomes with the same key, never a new one.** A timeout or `503` means the
    decision may have committed. Only the idempotency key makes replaying it safe.
 
-The machine-readable OpenAPI 3.0 contract lives at
-[`openapi/quotamint-runtime.yaml`](https://github.com/poorna-prakash-sr/quotamint/blob/main/openapi/quotamint-runtime.yaml)
-in the main repository. Generate or validate against it rather than hand-copying shapes.
+The API is a stable, machine-readable contract: JSON request and response bodies whose exact shapes
+are documented field by field in the [API reference](/api/overview). Generate or validate your
+client types against that contract rather than hand-copying shapes.
 
 ## The language-independent handler
 
@@ -783,9 +783,8 @@ curl -sS -X POST "$QUOTAMINT_URL/v1/consume" \
 
 ## What is identical everywhere
 
-- The endpoint, method, and JSON shape come from the
-  [OpenAPI document](https://github.com/poorna-prakash-sr/quotamint/blob/main/openapi/quotamint-runtime.yaml),
-  not from any SDK.
+- The endpoint, method, and JSON shape come from the documented contract in the
+  [API reference](/api/overview), not from any SDK.
 - One key per billable unit, persisted before the first attempt, reused on every retry. See
   [idempotency and retries](/guides/idempotency).
 - Credit amounts are decimal JSON numbers. Normalize to your language's decimal type at the edge.
