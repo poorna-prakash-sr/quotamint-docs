@@ -36,13 +36,3 @@ The workspace's monthly account allowance is full. Upgrade the account plan or w
 ## `503 service_unavailable`
 
 The runtime could not complete the decision within its budget, or a dependency is temporarily unavailable. The outcome of the operation is unknown: retry a `consume` with the same idempotency key. Contact support with the returned `requestId` if it persists.
-
-## Webhooks are not delivered
-
-Confirm that:
-
-- The endpoint is public HTTPS and does not resolve to a private address.
-- The endpoint is active and subscribed to the event type.
-- Your receiver returns `2xx` quickly.
-
-Use the dashboard delivery state to distinguish pending, retrying, and failed deliveries, and contact support with the delivery ID when a failure does not resolve.

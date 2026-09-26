@@ -1,6 +1,6 @@
 ---
 title: "Security checklist"
-description: "Protect credentials, customer data, balances, and webhook delivery"
+description: "Protect credentials, customer data, and balances"
 ---
 
 Before production traffic, verify each item below.
@@ -10,7 +10,7 @@ Before production traffic, verify each item below.
 - Store project keys in a server-side secret manager.
 - Use separate test and live secrets.
 - Rotate keys by creating the replacement before revoking the old key.
-- Never log `Authorization` headers, request bodies, metadata, or webhook secrets.
+- Never log `Authorization` headers, request bodies, or metadata.
 
 ## Request handling
 
@@ -19,15 +19,6 @@ Before production traffic, verify each item below.
 - Use a stable idempotency key for every billable operation.
 - Retry `500`, `503`, network ambiguity, and `429` with the original key and appropriate delay.
 - Treat denial reasons as normal product outcomes, not exceptional server failures.
-
-## Webhooks
-
-- Use a public HTTPS endpoint.
-- Preserve the raw body for signature verification.
-- Verify the HMAC signature and timestamp before parsing.
-- Deduplicate deliveries.
-- Return quickly and queue slow work.
-- Rotate signing secrets deliberately; update the consumer before changing the producer.
 
 ## Data isolation
 

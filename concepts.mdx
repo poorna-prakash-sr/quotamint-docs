@@ -7,7 +7,7 @@ QuotaMint has two boundaries: the **workspace** for people and account limits, a
 
 ## Workspace
 
-A workspace is a team and billing-account boundary. It contains members, projects, a QuotaMint account plan, usage allowance, webhooks, alerts, and audit history.
+A workspace is a team and billing-account boundary. It contains members, projects, a QuotaMint account plan, usage allowance, alerts, and audit history.
 
 Workspaces use the roles `OWNER`, `ADMIN`, `DEVELOPER`, and `VIEWER`. The workspace owner is always able to access every project.
 
@@ -19,7 +19,7 @@ A project is the runtime isolation boundary. It owns:
 - Plans, features, and entitlements
 - API keys and their environment
 - Usage events, idempotency records, and credit ledgers
-- Project members and webhooks
+- Project members
 
 Every runtime query is scoped to the project resolved from the API key. A customer ID from another project cannot be resolved accidentally.
 
