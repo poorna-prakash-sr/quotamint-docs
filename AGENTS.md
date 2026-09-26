@@ -14,12 +14,16 @@
 
 ## Terminology
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+- **QuotaMint** — the product name; Mintlify is only the publishing platform.
+- **Runtime API** — the machine-facing data plane: `/v1/check`, `/v1/consume`, `/v1/events`.
+- **Internal API** — server-only `/internal/v1/*` routes for the control plane; never suggested as a
+  customer integration surface.
+- **Account plan** — Free/Pro/Scale, applied to a *workspace*. **Plan** — a product plan integrators
+  create for *their* customers. Never use the two interchangeably.
+- QuotaMint has **no SDK**. Describe every integration as plain REST; the contract source is
+  `openapi/quotamint-runtime.yaml` in the main repository.
 
 ## Style preferences
-
-{/* Add any project-specific style rules below */}
 
 - Use active voice and second person ("you")
 - Keep sentences concise — one idea per sentence
@@ -29,5 +33,9 @@
 
 ## Content boundaries
 
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+- Document implemented behavior only. If the runtime does not do it, say so or leave it out.
+- Do not expose internal implementation details on integration-facing pages: no internal error
+  internals, no worker scheduling internals, no dashboard session code paths.
+- `/internal/v1/*` routes are documented only as the control plane's own surface, never as a path a
+  customer's app should call.
+- Credit amounts are decimals: described with "up to six decimal places", never as floats.

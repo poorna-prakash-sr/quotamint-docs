@@ -1,0 +1,53 @@
+---
+title: "Idempotency and retries"
+description: "Make network retries safe without double charging customers"
+---
+
+`consume` requires an idempotency key. `events` accepts one. The key identifies a logical operation, not a network attempt.
+
+## Pick a stable key
+
+Use an identifier from your own job or command:
+
+```text
+image_job_8472
+checkout_entitlement_order_901
+agent_run_2026_09_17_0004
+```
+
+Do not generate a new random key for every retry. If the first response is lost, a new key would represent a new charge.
+
+## Replay behavior
+
+The first request claims the key. QuotaMint stores the completed response and returns the same response on later calls with the same project, operation, environment, and payload.
+
+For `consume`, this means:
+
+- One credit deduction
+- One usage event
+- One ledger entry
+- Byte-identical responses for every replay
+
+Terminal denials are stored too. If a consume is denied for insufficient credits, retrying the same key returns the original denial even if the balance later changes. Use a new key for a new attempt.
+
+## Conflicts
+
+The following return `409 idempotency_key_reused`:
+
+- Same key with a different payload
+- Same key against a different endpoint
+- Same key across environment prefixes
+
+The request hash uses canonical JSON, so object key order and insignificant whitespace do not create false conflicts.
+
+## What to retry
+
+Retry with the same key for transient failures:
+
+- `500 internal_error`
+- `503 service_unavailable`
+- Network timeouts where the server outcome is unknown
+
+Do not retry a `400`, `401`, `403`, `404`, or `409` without correcting the request. For `429 rate_limited`, wait for the `Retry-After` header and retry the same logical operation.
+
+Idempotency records are retained for `IDEMPOTENCY_RETENTION`, which defaults to 24 hours. The worker prunes expired records.

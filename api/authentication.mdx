@@ -1,0 +1,43 @@
+---
+title: "Authentication"
+description: "Authenticate public runtime calls and internal service calls"
+---
+
+## Public API keys
+
+Send a project key as a bearer token:
+
+```bash
+curl "$RUNTIME/v1/check" \
+  -H "Authorization: Bearer $QUOTAMINT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"user_123","feature":"generate_image","quantity":1}'
+```
+
+Project keys are environment-bound. `qm_test_` selects development or staging; `qm_live_` selects production. The runtime resolves the project, workspace, account plan, key, and environment before the handler runs.
+
+## Internal credential
+
+Internal requests use:
+
+```http
+Authorization: Bearer <INTERNAL_API_SECRET>
+```
+
+The secret must be at least 32 characters and is compared in constant time. Store it only in the control plane and runtime service environments.
+
+## Authentication failures
+
+All of these are `401`:
+
+- Missing or malformed bearer header
+- Unknown key
+- Revoked key
+- Key prefix/environment mismatch
+- Invalid internal service credential
+
+The response uses the standard error envelope described in [errors](/api/errors). Unknown and revoked credentials are not distinguished to callers beyond their error code; raw secrets are never logged.
+
+## Key lifecycle
+
+Create and revoke keys from the dashboard, or use the internal API. A newly created secret is returned once. Store it immediately, create a replacement for rotation, then revoke the old key after deployment.

@@ -1,0 +1,42 @@
+---
+title: "Test and live environments"
+description: "Keep development, staging, and production traffic separated"
+---
+
+QuotaMint uses API-key prefixes to prevent accidental environment mixing.
+
+| Dashboard label | Schema value | Key prefix | Use |
+| --- | --- | --- | --- |
+| Test | `DEVELOPMENT` or `STAGING` | `qm_test_` | Local development and staging |
+| Live | `PRODUCTION` | `qm_live_` | Production traffic |
+
+A live key cannot authenticate against a test environment, and a test key cannot authenticate against live data. A prefix/environment mismatch returns `401`.
+
+## Recommended setup
+
+For most teams:
+
+- One project for development and staging, using test keys
+- One project for production, using live keys
+- Separate customer records in each project
+
+Use separate projects for test and live when balances, plans, or customer IDs must be isolated. Environments on keys select the runtime environment, but the data model itself is project-scoped.
+
+## Create keys
+
+Create keys in the dashboard under **API keys**. A key secret is shown once:
+
+```text
+qm_test_<32 bytes of random base64url data>
+qm_live_<32 bytes of random base64url data>
+```
+
+Store the secret in a server-side secret manager. QuotaMint stores only the prefix and SHA-256 digest. It never logs or returns the plaintext again.
+
+## Rotation
+
+Create a replacement key, deploy it, confirm traffic uses it, then revoke the old key. Revocation is immediate for future requests. Do not overwrite a secret in source control or a client bundle.
+
+## Project disable switch
+
+A disabled project returns `403 project_disabled` from the runtime. The setting is reversible and is useful as an operational stop switch. Build a clear customer-facing fallback for this case; the current runtime does not implement a project fail-open mode.

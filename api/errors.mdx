@@ -1,0 +1,56 @@
+---
+title: "Errors and denial reasons"
+description: "Handle normal denials, HTTP failures, and safe retries"
+---
+
+## Error envelope
+
+Non-decision errors use one stable shape:
+
+```json
+{
+  "error": {
+    "code": "insufficient_credits",
+    "message": "The adjustment would push the customer balance below zero.",
+    "details": {
+      "requested": "-150",
+      "remaining": "100"
+    }
+  },
+  "requestId": "9f2c4a1b7d3e5f608192a3b4c5d6e7f8"
+}
+```
+
+Keep `requestId` in your logs and include it when contacting support.
+
+## Decision denials
+
+`check` and `consume` return HTTP `200` for an allowed or denied product decision. Inspect `allowed`, not only the HTTP status.
+
+| Reason | Meaning |
+| --- | --- |
+| `customer_not_found` | The customer is not in this project |
+| `customer_inactive` | The customer cannot use runtime features |
+| `no_active_plan` | No plan is assigned |
+| `plan_inactive` | The assigned plan is archived or inactive |
+| `feature_not_found` | The feature key is unknown |
+| `feature_not_entitled` | The plan does not grant the feature |
+| `insufficient_credits` | The balance cannot cover the requested quantity |
+
+## HTTP statuses
+
+| Status | Codes and meaning |
+| --- | --- |
+| `200` | Allowed or denied decision; successful event or consume |
+| `400` | Invalid JSON, unknown field, invalid value, timestamp skew |
+| `401` | Invalid, missing, revoked, or mismatched credential |
+| `403` | `project_disabled` |
+| `404` | Unknown route, or missing event customer |
+| `405` | Wrong HTTP method |
+| `409` | Idempotency conflict, or inactive plan assignment |
+| `413` | Request body is larger than the configured limit |
+| `429` | Key rate limit or monthly workspace usage limit |
+| `500` | Runtime error; safe to retry with the same key |
+| `503` | Database unavailable or request budget exceeded |
+
+`429 rate_limited` includes `Retry-After` and `retryAfterSeconds`. Honor the server delay before retrying.

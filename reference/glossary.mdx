@@ -1,0 +1,29 @@
+---
+title: "Glossary"
+description: "Short definitions for QuotaMint terminology"
+---
+
+| Term | Definition |
+| --- | --- |
+| Account plan | The QuotaMint plan applied to a workspace: Free, Pro, or Scale |
+| API key | A project-scoped credential for public `/v1` runtime calls |
+| Check | A read-only entitlement and affordability decision |
+| Consume | The authoritative check-and-charge operation |
+| Control plane | Dashboard and server actions that manage configuration and people |
+| Credit ledger | Append-only history of balance mutations |
+| Customer | Your user, organization, or billable subject inside a project |
+| Data plane | Go runtime service that authenticates keys and enforces usage |
+| Environment | Development, staging, or production context selected by a key |
+| Entitlement | A plan's permission to use a feature |
+| Event | A non-credit usage record created by `/v1/events` |
+| Feature | A stable key representing a product capability |
+| Idempotency key | A client-supplied key that makes a logical operation replay-safe |
+| Internal API | Server-only routes for plan sync, credits, keys, and webhooks |
+| Plan | A product-level set of customer entitlements and monthly credits |
+| Project | Runtime isolation boundary for customers, keys, plans, and usage |
+| Request ID | Identifier returned on every response for log correlation |
+| Workspace | Collaboration, account-plan, and team-membership boundary |
+
+<Note>
+  A QuotaMint account plan is not the same thing as a plan you create for your customers. The former controls your workspace's capacity; the latter controls your product's access rules.
+</Note>

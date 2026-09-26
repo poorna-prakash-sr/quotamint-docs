@@ -1,0 +1,796 @@
+---
+title: "Calling QuotaMint from any language"
+description: "Wire the REST API into Node.js, Python, Go, Java, PHP, Ruby, C#, or Rust without an SDK"
+---
+
+QuotaMint is a plain HTTPS JSON API. There is no SDK to install and no generated client to trust —
+anything that can send an HTTP POST and parse JSON can integrate. This page shows the same working
+pattern in several languages and calls out where each language will try to hurt you.
+
+The pattern has four steps. Get them right once, in one place, and every call site stays safe:
+
+1. **Read the key and base URL from the environment**, never from source code.
+2. **Normalize credit amounts to a decimal at the boundary.** Amounts arrive as JSON numbers with up
+   to six decimal places. That wire format round-trips exactly for every value QuotaMint can send,
+   but the moment you add `0.1` twice in a floating-point type you are doing money math in binary.
+   Convert to a decimal string (or your language's decimal type) immediately after parsing, and keep
+   it that way until you display it.
+3. **Mint and persist the idempotency key before the first HTTP attempt.** The key identifies the
+   billable unit of work — not the network attempt. Details and the crash scenario are in
+   [idempotency and retries](/guides/idempotency).
+4. **Retry unknown outcomes with the same key, never a new one.** A timeout or `503` means the
+   decision may have committed. Only the idempotency key makes replaying it safe.
+
+The machine-readable OpenAPI 3.0 contract lives at
+[`openapi/quotamint-runtime.yaml`](https://github.com/poorna-prakash-sr/quotamint/blob/main/openapi/quotamint-runtime.yaml)
+in the main repository. Generate or validate against it rather than hand-copying shapes.
+
+## The language-independent handler
+
+Whatever the language, the decision logic is this pseudocode:
+
+```text
+decision logic:
+  on network failure or 500/503 or 429 with Retry-After:
+      retry with the SAME idempotency key, with backoff
+  on 400/401/403/404/409/413:
+      do not retry; fix the request or surface the failure
+  on 200:
+      it is a decision, not an error
+      allowed == true  -> perform the billable work
+      allowed == false -> handle denial reason (upgrade prompt, top-up, block)
+```
+
+Two responses look similar and mean different things: a `200` with `allowed: false` is a normal
+product outcome; a `429` with no `Retry-After` header is the workspace hitting its monthly event
+allowance, and retrying cannot help until the plan changes.
+
+## Node.js (and Bun, Deno)
+
+```ts
+// Server-side only. Never ship an API key in a browser bundle.
+import { randomUUID } from "node:crypto";
+
+const BASE_URL = process.env.QUOTAMINT_URL!;        // e.g. https://runtime.example.com
+const API_KEY = process.env.QUOTAMINT_API_KEY!;     // qm_test_... or qm_live_...
+
+// Persist this mapping in YOUR database before the first attempt. On the retry
+// path it must return the same key the first attempt used.
+const keys = new Map<string, string>();             // demo stand-in for your DB
+function keyFor(operationId: string): string {
+  let key = keys.get(operationId);
+  if (!key) {
+    key = `op_${randomUUID()}`;
+    keys.set(operationId, key);
+  }
+  return key;
+}
+
+export async function consume(
+  customerId: string,
+  feature: string,
+  operationId: string,
+  quantity = 1,
+) {
+  const idempotencyKey = keyFor(operationId);
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await fetch(`${BASE_URL}/v1/consume`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+        "X-Request-ID": randomUUID(),
+      },
+      body: JSON.stringify({
+        customerId,
+        feature,
+        quantity,
+        idempotencyKey,
+      }),
+      // The server bounds each decision at 5 seconds. Give the client more.
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (res.status === 429) {
+      // Two different 429s: rate_limited has Retry-After and is retryable;
+      // workspace_usage_limit_exceeded does not and is not.
+      const retryAfter = Number(res.headers.get("Retry-After") ?? 0);
+      if (retryAfter > 0 && attempt < 3) {
+        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+      throw new Error(await res.text()); // plan cap or exhausted retries
+    }
+
+    if (res.status === 500 || res.status === 503 || res.status >= 500) {
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 2 ** attempt * 500));
+        continue; // same key: replay-safe
+      }
+      throw new Error(`consume failed after retries: ${res.status}`);
+    }
+
+    if (!res.ok) {
+      // 400/401/403/404/409: fix the request or credentials. Not retryable.
+      throw new Error(await res.text());
+    }
+
+    const decision = await res.json();
+    if (!decision.allowed) {
+      return { ok: false as const, reason: decision.reason as string };
+    }
+    // decision.creditsUsed and decision.creditsRemaining are JSON numbers.
+    // 1234.567891.toString() is exact for every value QuotaMint can send;
+    // keep that string if you plan to do arithmetic.
+    return {
+      ok: true as const,
+      creditsUsed: String(decision.creditsUsed),
+      creditsRemaining: String(decision.creditsRemaining),
+    };
+  }
+  throw new Error("unreachable");
+}
+```
+
+Two JavaScript traps this snippet avoids:
+
+- `JSON.parse` gives you binary doubles. `0.1 + 0.2 !== 0.3`. Convert credits to strings before
+  accumulating; `String(v)` or `Intl.NumberFormat` on a raw float is display-only.
+- JavaScript `Date.now()`-derived keys are not stable. Do not build idempotency keys from anything
+  that changes between attempts.
+
+## Python
+
+```python
+import os, time, uuid
+import requests
+from decimal import Decimal
+
+BASE_URL = os.environ["QUOTAMINT_URL"]        # e.g. https://runtime.example.com
+API_KEY = os.environ["QUOTAMINT_API_KEY"]     # qm_test_... or qm_live_...
+
+# In real code, persist operation_id -> key in your own database.
+_operation_keys: dict[str, str] = {}
+
+def key_for(operation_id: str) -> str:
+    if operation_id not in _operation_keys:
+        _operation_keys[operation_id] = f"op_{uuid.uuid4()}"
+    return _operation_keys[operation_id]
+
+def consume(customer_id: str, feature: str, operation_id: str, quantity: int = 1) -> dict:
+    idempotency_key = key_for(operation_id)
+
+    for attempt in range(4):
+        resp = requests.post(
+            f"{BASE_URL}/v1/consume",
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+                "X-Request-ID": str(uuid.uuid4()),
+            },
+            json={
+                "customerId": customer_id,
+                "feature": feature,
+                "quantity": quantity,
+                "idempotencyKey": idempotency_key,
+            },
+            timeout=10,
+        )
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", "0"))
+            if retry_after > 0 and attempt < 3:
+                time.sleep(retry_after)
+                continue
+            resp.raise_for_status()
+        if resp.status_code in (500, 503) and attempt < 3:
+            time.sleep(0.5 * (2**attempt))
+            continue
+        break
+
+    resp.raise_for_status()  # 4xx are real failures; fix the request
+
+    decision = resp.json()
+    if not decision["allowed"]:
+        return {"ok": False, "reason": decision["reason"]}
+
+    # Convert immediately. Decimal("1234.567891") is exact; 1234.567891 floats.
+    decision["creditsUsed"] = str(Decimal(str(decision["creditsUsed"])))
+    decision["creditsRemaining"] = str(Decimal(str(decision["creditsRemaining"])))
+    return {"ok": True, **decision}
+```
+
+Python notes:
+
+- Keep `requests` timeouts below 10s so a stuck connection cannot hang a worker; the server-side
+  decision budget is 5 seconds, so a healthy runtime always answers first.
+
+## Go
+
+Go's `encoding/json` decodes numbers into `float64`, which is the mistake to avoid. Decode into
+`json.Number` (or `json.RawMessage`), or use `github.com/shopspring/decimal`.
+
+```go
+package quotamint
+
+import (
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "os"
+    "strconv"
+    "sync"
+    "time"
+
+    "github.com/google/uuid"
+)
+
+// ConsumeDecision mirrors the wire shape. Credit fields are json.Number so
+// encoding/json never turns them into float64.
+type ConsumeDecision struct {
+    Allowed          bool        `json:"allowed"`
+    Reason           string      `json:"reason"`
+    CreditsUsed      json.Number `json:"creditsUsed"`
+    CreditsRemaining json.Number `json:"creditsRemaining"`
+}
+
+var baseURL = os.Getenv("QUOTAMINT_URL")     // e.g. https://runtime.example.com
+var apiKey = os.Getenv("QUOTAMINT_API_KEY") // qm_test_... or qm_live_...
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// keyFor returns the same key for a given operation across restarts. In real
+// code, back it with the same store that owns the job record (a DB row or
+// Redis SET NX), not an in-memory map — a restart must not change the key.
+var keys sync.Map // map[string]string
+
+func keyFor(operationID string) string {
+    if v, ok := keys.Load(operationID); ok {
+        return v.(string)
+    }
+    key := "op_" + uuid.NewString()
+    actual, _ := keys.LoadOrStore(operationID, key)
+    return actual.(string)
+}
+
+func Consume(ctx context.Context, customerID, feature, operationID string, quantity int64) (ConsumeDecision, error) {
+    idempotencyKey := keyFor(operationID)
+    body, err := json.Marshal(map[string]any{
+        "customerId":     customerID,
+        "feature":        feature,
+        "quantity":       quantity,
+        "idempotencyKey": idempotencyKey,
+    })
+    if err != nil {
+        return ConsumeDecision{}, err
+    }
+
+    var lastErr error
+    for attempt := 0; attempt < 4; attempt++ {
+        if attempt > 0 {
+            time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+        }
+        req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/consume", bytes.NewReader(body))
+        if err != nil {
+            return ConsumeDecision{}, err
+        }
+        req.Header.Set("Authorization", "Bearer "+apiKey)
+        req.Header.Set("Content-Type", "application/json")
+        req.Header.Set("X-Request-ID", uuid.NewString())
+
+        resp, err := httpClient.Do(req)
+        if err != nil {
+            // Network error or client timeout: the outcome is unknown and the
+            // only safe reaction is to retry with the SAME key.
+            lastErr = err
+            continue
+        }
+
+        switch {
+        case resp.StatusCode == http.StatusTooManyRequests:
+            ra, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
+            resp.Body.Close()
+            if ra > 0 && attempt < 3 {
+                time.Sleep(time.Duration(ra) * time.Second)
+                continue
+            }
+            // No Retry-After or retries exhausted. The code distinguishes a
+            // throttle (retryable) from the workspace's monthly cap (not).
+            return ConsumeDecision{}, fmt.Errorf("429 without Retry-After: %w", lastErr)
+
+        case resp.StatusCode >= 500:
+            resp.Body.Close()
+            lastErr = fmt.Errorf("server error %d", resp.StatusCode)
+            continue
+
+        default:
+            defer resp.Body.Close()
+            var decision ConsumeDecision
+            if err := json.NewDecoder(resp.Body).Decode(&decision); err != nil {
+                return ConsumeDecision{}, err
+            }
+            if resp.StatusCode != http.StatusOK {
+                // 400/401/403/404/409/413: not retryable. Surface the status
+                // and body to your error path.
+                return ConsumeDecision{}, fmt.Errorf("consume failed: %d", resp.StatusCode)
+            }
+            if !decision.Allowed {
+                // A denial is a decision: nothing was charged and the idempotency
+                // key is burned for 24 h. Branch on decision.Reason.
+                return decision, nil
+            }
+            // creditsUsed is json.Number: convert to a decimal type (or string)
+            // at this boundary if you will do arithmetic with it.
+            return decision, nil
+        }
+    }
+    return ConsumeDecision{}, lastErr
+}
+```
+
+## Java
+
+```java
+// Requires Java 11+ for HttpClient, java.time for keys.
+// Credit amounts: use BigDecimal, never double.
+import java.net.URI;
+import java.net.http.*;
+import java.math.BigDecimal;
+import java.time.Duration;
+
+public class QuotaMint {
+    static final String BASE_URL = System.getenv("QUOTAMINT_URL");     // https://runtime.example.com
+    static final String API_KEY  = System.getenv("QUOTAMINT_API_KEY"); // qm_test_/qm_live_
+
+    static final HttpClient http = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(10))
+        .build();
+
+    // In real code, back this with a database table, not a HashMap.
+    static Map<String, String> keys = new ConcurrentHashMap<>();
+
+    static String keyFor(String operationId) {
+        return keys.computeIfAbsent(operationId, id -> "op_" + UUID.randomUUID());
+    }
+
+    public static Decision consume(String customerId, String feature, String operationId, int quantity)
+            throws Exception {
+        String idempotencyKey = keyFor(operationId);
+        String body = String.format(
+            "{\"customerId\":\"%s\",\"feature\":\"%s\",\"quantity\":%d,\"idempotencyKey\":\"%s\"}",
+            customerId, feature, quantity, idempotencyKey);
+
+        int attempts = 4;
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(BASE_URL + "/v1/consume"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + API_KEY)
+                .header("Content-Type", "application/json")
+                .header("X-Request-ID", UUID.randomUUID().toString())
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+
+            if (resp.statusCode() == 429) {
+                String ra = resp.headers().firstValue("Retry-After").orElse("0");
+                if (Integer.parseInt(ra) > 0 && attempt < attempts - 1) {
+                    Thread.sleep(Integer.parseInt(ra) * 1000L);
+                    continue;
+                }
+                throw new IllegalStateException("rate limited: " + ra);
+            }
+            if (resp.statusCode() >= 500 && attempt < attempts - 1) {
+                Thread.sleep(500L * (1L << attempt));
+                continue; // same key: replay makes this safe
+            }
+            if (resp.statusCode() != 200) {
+                throw new IllegalStateException("consume failed: " + resp.statusCode()
+                    + " " + resp.body());
+            }
+
+            // Parse minimally here; use Jackson/Gson with BigDecimal in real code.
+            boolean allowed = resp.body().contains("\"allowed\": true")
+                || resp.body().contains("\"allowed\":true");
+            return new Decision(allowed, resp.body());
+        }
+        throw new IllegalStateException("unreachable");
+    }
+}
+
+record Decision(boolean allowed, String rawBody) {}
+```
+
+Using raw string matching for `allowed` keeps the sample dependency-free; in production parse with
+Jackson into typed fields and map `creditsUsed`/`creditsRemaining` to `BigDecimal`.
+
+## PHP
+
+```php
+<?php
+// Server side only. Amounts: use BCMath or a decimal library, never floats.
+$baseUrl = getenv('QUOTAMINT_URL');       // https://runtime.example.com
+$apiKey  = getenv('QUOTAMINT_API_KEY');   // qm_test_... or qm_live_...
+
+/** In production, persist operation_id -> key in your own DB. */
+function key_for(string $operationId): string {
+    static $keys = [];
+    if (!isset($keys[$operationId])) {
+        $keys[$operationId] = 'op_' . bin2hex(random_bytes(16));
+    }
+    return $keys[$operationId];
+}
+
+function consume(string $customerId, string $feature, string $operationId, int $quantity = 1): array {
+    global $baseUrl, $apiKey;
+    $idempotencyKey = key_for($operationId);
+    $body = json_encode([
+        'customerId'     => $customerId,
+        'feature'        => $feature,
+        'quantity'       => $quantity,
+        'idempotencyKey' => $idempotencyKey,
+    ]);
+
+    for ($attempt = 0; $attempt < 4; $attempt++) {
+        $ch = curl_init("$baseUrl/v1/consume");
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $body,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                "Authorization: Bearer $apiKey",
+                'X-Request-ID: ' . bin2hex(random_bytes(16)),
+            ],
+        ]);
+        $respBody = curl_exec($ch);
+        $status   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+
+        if ($status === 500 || $status === 503) {
+            sleep(2 ** $attempt);        // same key: replay-safe
+            continue;
+        }
+        if ($status === 429) {
+            $headers = []; // capture via CURLOPT_HEADERFUNCTION in production
+            if ($headers['Retry-After'] ?? 0) {
+                sleep((int)$headers['Retry-After']);
+                continue;
+            }
+            throw new RuntimeException('workspace usage limit reached');
+        }
+        break;
+    }
+
+    if ($status !== 200) {
+        throw new RuntimeException("consume failed ($status): $respBody");
+    }
+    $decision = json_decode($respBody, true, flags: JSON_THROW_ON_ERROR);
+    if (!$decision['allowed']) {
+        return ['ok' => false, 'reason' => $decision['reason']];
+    }
+    return [
+        'ok'               => true,
+        // JSON numbers arrive as PHP floats. Cast to string immediately.
+        'creditsUsed'      => (string) $decision['creditsUsed'],
+        'creditsRemaining' => (string) $decision['creditsRemaining'],
+    ];
+}
+```
+
+The `CURLOPT_HEADERFUNCTION` comment matters: to read `Retry-After` you must capture response
+headers explicitly; the sketch above shows where.
+
+## Ruby
+
+```ruby
+require 'json'
+require 'net/http'
+require 'securerandom'
+require 'bigdecimal'
+require 'uri'
+
+BASE_URL = ENV.fetch('QUOTAMINT_URL')      # https://runtime.example.com
+API_KEY  = ENV.fetch('QUOTAMINT_API_KEY')  # qm_test_... or qm_live_...
+
+# In production, back this with your database, not an in-memory Hash.
+# A Mutex'd Hash or a concurrent-ruby Map both work for a single process.
+KEYS = {}
+
+def key_for(operation_id)
+  KEYS[operation_id] ||= "op_#{SecureRandom.uuid}"
+end
+
+def consume(customer_id:, feature:, operation_id:, quantity: 1)
+  idempotency_key = key_for(operation_id)
+  uri = URI.join(BASE_URL, '/v1/consume')
+  body = {
+    customerId: customer_id,
+    feature: feature,
+    quantity: quantity,
+    idempotencyKey: idempotency_key,
+  }.to_json
+
+  4.times do |attempt|
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = uri.scheme == 'https'
+    http.read_timeout = 10
+
+    req = Net::HTTP::Post.new(uri)
+    req['Authorization'] = "Bearer #{API_KEY}"
+    req['Content-Type'] = 'application/json'
+    req['X-Request-ID'] = SecureRandom.uuid
+    req.body = body
+
+    res = http.request(req)
+
+    case res.code.to_i
+    when 500, 503
+      sleep(0.5 * (2**attempt)) # same key: replay-safe
+      next
+    when 429
+      retry_after = res['Retry-After'].to_i
+      raise 'usage limit reached' if retry_after.zero?
+      sleep(retry_after)
+      next
+    when 200
+      decision = JSON.parse(res.body)
+      next_allowed = decision['allowed']
+      unless next_allowed
+        return { ok: false, reason: decision['reason'] }
+      end
+      return {
+        ok: true,
+        creditsUsed: BigDecimal(decision['creditsUsed'].to_s),
+        creditsRemaining: BigDecimal(decision['creditsRemaining'].to_s),
+      }
+    else
+      raise "consume failed (#{res.code}): #{res.body}"
+    end
+  end
+end
+```
+
+## C# (.NET)
+
+```csharp
+using System.Net.Http.Headers;
+using System.Text;
+
+public sealed class QuotaMintClient
+{
+    // Read config from environment or your secret store — never hardcode.
+    private readonly string _baseUrl = Environment.GetEnvironmentVariable("QUOTAMINT_URL")!;
+    private readonly string _apiKey  = Environment.GetEnvironmentVariable("QUOTAMINT_API_KEY")!;
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+    // In production, back this with your database, not the dictionary.
+    private readonly ConcurrentDictionary<string, string> _keys = new();
+
+    private string KeyFor(string operationId) =>
+        _keys.GetOrAdd(operationId, id => $"op_{Guid.NewGuid():N}");
+
+    public async Task<Decision> ConsumeAsync(
+        string customerId, string feature, string operationId, int quantity = 1)
+    {
+        var idempotencyKey = KeyFor(operationId);
+        var body = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            customerId,
+            feature,
+            quantity,
+            idempotencyKey,
+        });
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/consume")
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+            req.Headers.Add("X-Request-ID", Guid.NewGuid().ToString());
+
+            HttpResponseMessage resp;
+            try { resp = await _http.SendAsync(req); }
+            catch (HttpRequestException) { await Backoff(attempt); continue; }
+
+            if ((int)resp.StatusCode == 429)
+            {
+                var ra = resp.Headers.RetryAfter?.DeltaSeconds ?? 0;
+                if (ra > 0 && attempt < 3) { await Task.Delay(TimeSpan.FromSeconds(ra)); continue; }
+                throw new InvalidOperationException("usage limit reached");
+            }
+            if ((int)resp.StatusCode >= 500) { await Backoff(attempt); continue; }
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException($"consume failed: {(int)resp.StatusCode}");
+
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = doc.RootElement;
+            if (!root.GetProperty("allowed").GetBoolean())
+                return Decision.Denied(root.GetProperty("reason").GetString()!);
+
+            // JSON numbers → decimal, not double, via GetDecimal().
+            return Decision.Allowed(
+                root.GetProperty("creditsUsed").GetDecimal(),
+                root.GetProperty("creditsRemaining").GetDecimal());
+        }
+        throw new TimeoutException("consume did not settle after retries");
+    }
+
+    private static async Task Backoff(int attempt) =>
+        await Task.Delay(TimeSpan.FromMilliseconds(500 * (int)Math.Pow(2, attempt)));
+}
+
+public sealed record Decision(bool Allowed, string? Reason, decimal CreditsUsed, decimal CreditsRemaining)
+{
+    public static Decision Allowed(decimal used, decimal remaining) => new(true, null, used, remaining);
+    public static Decision Denied(string reason) => new(false, reason, 0, 0);
+}
+```
+
+`JsonElement.GetDecimal()` parses the JSON number as an exact `decimal`, which is exactly what you
+want here; avoid `GetDouble()` for credit fields.
+
+## Rust
+
+Two serializations meet here: `serde_json`'s default number decoding is `f64`, and the pivot is to
+keep credit fields as `serde_json::Number` (or `String`) and parse them into
+`rust_decimal::Decimal` with the `serde-with-arbitrary-precision` feature. `f64` is the bug.
+
+```rust
+// Cargo.toml:
+//   reqwest     = { version = "0.12", features = ["json", "rustls-tls"] }
+//   tokio       = { version = "1", features = ["macros", "rt-multi-thread"] }
+//   serde       = { version = "1", features = ["derive"] }
+//   serde_json  = { version = "1", features = ["arbitrary_precision"] }
+//   rust_decimal = { version = "1", features = ["serde-with-arbitrary-precision"] }
+//   uuid        = { version = "1", features = ["v4"] }
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::Duration;
+
+// arbitrary_precision keeps the JSON number text intact through parsing;
+// Decimal parses it exactly. Never round-trip these through f64.
+#[derive(Deserialize)]
+pub struct Decision {
+    pub allowed: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub credits_used: Option<rust_decimal::Decimal>,
+    #[serde(default)]
+    pub credits_remaining: Option<rust_decimal::Decimal>,
+}
+
+pub struct Client {
+    http: reqwest::Client,
+    base_url: String,
+    api_key: String,
+    keys: Mutex<HashMap<String, String>>, // prod: your own durable store
+}
+
+impl Client {
+    pub fn from_env() -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap(),
+            base_url: std::env::var("QUOTAMINT_URL").expect("QUOTAMINT_URL"),
+            api_key: std::env::var("QUOTAMINT_API_KEY").expect("QUOTAMINT_API_KEY"),
+            keys: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn key_for(&self, operation_id: &str) -> String {
+        let mut keys = self.keys.lock().unwrap();
+        keys.entry(operation_id.to_string())
+            .or_insert_with(|| format!("op_{}", uuid::Uuid::new_v4()))
+            .clone()
+    }
+
+    /// Consume one billable unit. A denied decision is Ok(Decision) with
+    /// allowed == false — it is a product outcome, not a transport failure.
+    pub async fn consume(
+        &self,
+        customer_id: &str,
+        feature: &str,
+        operation_id: &str,
+        quantity: i64,
+    ) -> Result<Decision, Box<dyn std::error::Error>> {
+        let idempotency_key = self.key_for(operation_id);
+        let body = serde_json::json!({
+            "customerId": customer_id,
+            "feature": feature,
+            "quantity": quantity,
+            "idempotencyKey": idempotency_key,
+        });
+
+        for attempt in 0..4 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(500 * 2u64.pow(attempt as u32))).await;
+            }
+            let result = self
+                .http
+                .post(format!("{}/v1/consume", self.base_url))
+                .bearer_auth(&self.api_key)
+                .header("X-Request-ID", uuid::Uuid::new_v4().to_string())
+                .json(&body)
+                .send()
+                .await;
+
+            let resp = match result {
+                Ok(r) => r,
+                Err(err) => {
+                    // Network error or timeout: outcome unknown, same key.
+                    eprintln!("consume attempt {attempt}: {err}; retrying same key");
+                    continue;
+                }
+            };
+
+            match resp.status().as_u16() {
+                500 | 503 => continue, // same key: replay-safe
+                429 => {
+                    let ra = resp
+                        .headers()
+                        .get("Retry-After")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .unwrap_or(0);
+                    if ra > 0 && attempt < 3 {
+                        tokio::time::sleep(Duration::from_secs(ra)).await;
+                        continue;
+                    }
+                    // No Retry-After: the workspace hit its monthly event
+                    // allowance. Retrying cannot help until the plan changes.
+                    return Err("usage limit reached".into());
+                }
+                s if (200..300).contains(&s) => return Ok(resp.json::<Decision>().await?),
+                s => return Err(format!("consume failed: {s}").into()),
+            }
+        }
+        Err("consume did not settle after retries".into())
+    }
+}
+```
+
+In real code deserialize the success body with `rust_decimal::Decimal` for `creditsUsed` /
+`creditsRemaining`, and return a typed denial struct instead of raw `Value`.
+
+## Curl for anything else
+
+For a language not shown above — or for a shell script, cron job, or postgres `psql` extension —
+,the plain `curl` form from the [quickstart](/quickstart) is the whole API:
+
+```bash
+curl -sS -X POST "$QUOTAMINT_URL/v1/consume" \
+  -H "Authorization: Bearer $QUOTAMINT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: $(uuidgen)" \
+  -d '{
+    "customerId": "user_123",
+    "feature": "generate_image",
+    "quantity": 1,
+    "idempotencyKey": "job_8472:image"
+  }'
+```
+
+## What is identical everywhere
+
+- The endpoint, method, and JSON shape come from the
+  [OpenAPI document](https://github.com/poorna-prakash-sr/quotamint/blob/main/openapi/quotamint-runtime.yaml),
+  not from any SDK.
+- One key per billable unit, persisted before the first attempt, reused on every retry. See
+  [idempotency and retries](/guides/idempotency).
+- Credit amounts are decimal JSON numbers. Normalize to your language's decimal type at the edge.
+- Denials (`allowed: false`) are `200`. Retry classification by status is in
+  [errors and denial reasons](/api/errors).
+- The environment is in the key (`qm_test_` vs `qm_live_`), never in the body — see
+  [test and live environments](/guides/environments).
+- Send `X-Request-ID` on every call so support can trace a request end to end.

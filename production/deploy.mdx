@@ -1,0 +1,63 @@
+---
+title: "Deploy the runtime"
+description: "Run the Go API, worker, and PostgreSQL safely"
+---
+
+QuotaMint has a Next.js control plane and a Go runtime data plane. Both use the same PostgreSQL database, but Prisma owns migrations.
+
+## Services
+
+Run:
+
+- The Next.js dashboard and server actions
+- Two or more Go API replicas behind a load balancer
+- One or more Go workers for monthly grants, webhook delivery, and pruning
+- PostgreSQL with the committed Prisma migrations applied
+
+The API has no important in-process state and does not require sticky sessions. Worker jobs are idempotent, so more than one worker can run safely.
+
+## Database migrations
+
+Apply migrations as a deployment step:
+
+```bash
+pnpm prisma migrate deploy
+go run ./cmd/api
+go run ./cmd/worker
+```
+
+The runtime never creates or migrates the schema at startup. It expects the tables to already exist.
+
+## Runtime configuration
+
+Required:
+
+```bash
+DATABASE_URL=postgresql://...
+INTERNAL_API_SECRET=<at least 32 random characters>
+```
+
+Important settings:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HTTP_ADDR` | `:8080` | Listen address |
+| `REQUEST_BODY_LIMIT` | `64KB` | Maximum request body |
+| `IDEMPOTENCY_RETENTION` | `24h` | Replay retention |
+| `WORKER_GRANT_INTERVAL` | `1m` | Monthly-grant scan interval |
+| `WORKER_PRUNE_INTERVAL` | `1h` | Housekeeping interval |
+| `WORKER_WEBHOOK_INTERVAL` | `5s` | Delivery polling interval |
+| `WEBHOOK_ENCRYPTION_KEY` | unset | Base64 32-byte AES key |
+| `WEBHOOK_ENCRYPTION_KEY_VERSION` | `1` | Secret encryption version |
+
+Generate the webhook encryption key with:
+
+```bash
+openssl rand -base64 32
+```
+
+If it is unset, webhook configuration and delivery are disabled; other runtime calls remain available.
+
+## Health checks
+
+Use `/health` for process liveness and `/ready` for database readiness. Gate load-balancer traffic on readiness. A database outage should not cause a process-only health probe to misclassify the binary.

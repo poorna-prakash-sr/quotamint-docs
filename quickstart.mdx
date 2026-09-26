@@ -1,47 +1,129 @@
 ---
 title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+description: "Create a test project and make your first usage decision"
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide uses the QuotaMint dashboard and runtime API together. It ends with one `consume` request that is safe to retry.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+## Before you begin
 
-## Prerequisites
+You need:
 
-Before you begin, you must have:
+- A QuotaMint workspace and project
+- A test API key (`qm_test_...`)
+- A customer with an active plan
+- A feature entitled by that plan
+- The runtime base URL from **Developers** in the dashboard
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+## 1. Create a project
 
-## Get started
+Create a project in the dashboard. Keep separate projects when test and live balances must never mix. A project owns its customers, plans, features, API keys, usage, and webhooks.
 
-<Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+Open **Settings → Projects** to confirm the project slug and default environment.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+## 2. Add a plan and feature
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+Create a plan such as `pro` and give it a monthly credit allocation. Then create a metered feature:
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+- Key: `generate_image`
+- Type: `CREDIT`
+- Credit cost: `10`
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+Add the feature to the `pro` entitlement matrix. A customer can only consume an active feature on an active plan.
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+## 3. Create a customer and assign the plan
+
+Customers are identified by your own stable ID. You can create and assign one from the dashboard, or sync it from your backend through the internal API. Example IDs are opaque strings such as `user_123` or `org_acme`.
+
+## 4. Create a test key
+
+Open **API keys**, choose **Test**, and create a key. Copy the secret immediately; QuotaMint returns it once and does not store the plaintext.
+
+```bash
+export QUOTAMINT_URL="https://runtime.example.com"
+export QUOTAMINT_TEST_KEY="qm_test_replace_me"
+```
+
+Never ship a test or live key to a browser bundle. Send runtime requests from your server.
+
+## 5. Check without changing anything
+
+`check` is useful for previews and UI hints. It does not reserve or consume credits.
+
+```bash
+curl -sS -X POST "$QUOTAMINT_URL/v1/check" \
+  -H "Authorization: Bearer $QUOTAMINT_TEST_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"user_123","feature":"generate_image","quantity":1}'
+```
+
+```json
+{
+  "allowed": true,
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "requiredCredits": 10,
+  "creditsRemaining": 500
+}
+```
+
+## 6. Consume atomically
+
+Call `consume` immediately before the billable work. The idempotency key should identify the business operation, not the HTTP attempt.
+
+```bash
+curl -sS -X POST "$QUOTAMINT_URL/v1/consume" \
+  -H "Authorization: Bearer $QUOTAMINT_TEST_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerId":"user_123",
+    "feature":"generate_image",
+    "quantity":1,
+    "idempotencyKey":"image_job_8472",
+    "metadata":{"requestId":"req_123"}
+  }'
+```
+
+```json
+{
+  "allowed": true,
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "creditsUsed": 10,
+  "creditsRemaining": 490
+}
+```
+
+If the call is retried with the same key and payload, QuotaMint returns the original response without charging again. Read [idempotency](/guides/idempotency) before adding retry middleware.
+
+<Note>
+  QuotaMint exposes a plain REST API — there is no SDK to install. See
+  [calling QuotaMint from any language](/guides/rest-api-any-language) for copyable request patterns
+  in eight backend languages.
+</Note>
+
+<Warning>
+  Do not use `check` followed by `consume` as an authorization transaction. Another request can spend the balance between the two calls. `consume` is the authoritative decision.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={3}>
+  <Card title="Integrate from any language" href="/guides/rest-api-any-language">
+    Node.js, Python, Go, Java, PHP, Ruby, C#, and Rust working against the same REST contract.
+  </Card>
+  <Card title="Sync billing changes" href="/guides/customers-plans">
+    Keep Stripe, Razorpay, or another billing provider as the source of payment truth.
+  </Card>
+  <Card title="Handle retries" href="/guides/idempotency">
+    Choose stable keys and understand replay and conflict behavior.
+  </Card>
+  <Card title="Track non-credit usage" href="/api/events">
+    Record tokens, seconds, documents, or other project-defined metrics.
+  </Card>
+  <Card title="Go live safely" href="/production/security">
+    Separate keys, verify webhooks, and add a denial path to your product.
+  </Card>
+</CardGroup>

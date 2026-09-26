@@ -1,0 +1,65 @@
+---
+title: "Webhooks"
+description: "Receive signed usage, credit, plan, and alert events"
+---
+
+Webhooks notify your backend when QuotaMint records a meaningful usage or credit state change. Configure endpoints from the dashboard or through the internal API.
+
+## Event types
+
+| Event | Meaning |
+| --- | --- |
+| `usage.consumed` | A billable feature was consumed |
+| `usage.limit_reached` | A configured usage threshold was reached |
+| `credits.updated` | A credit balance changed |
+| `customer.plan_changed` | A customer's plan changed |
+| `credits.low` | A low-credit threshold was reached |
+| `customer.credits_depleted` | A customer reached zero available credits |
+| `usage.threshold_reached` | A configured usage threshold fired |
+
+Subscribe an endpoint only to the events it needs. An endpoint can be project-wide or associated with an environment.
+
+## Endpoint requirements
+
+- The destination must use public HTTPS.
+- Loopback, private, link-local, multicast, and unspecified addresses are rejected.
+- Redirects are not followed during delivery.
+- The signing secret is returned only when the endpoint is created or its secret is rotated.
+
+Webhook configuration and delivery require `WEBHOOK_ENCRYPTION_KEY`. If it is unset, runtime usage calls still work but endpoint configuration and delivery are disabled.
+
+## Signature verification
+
+Each delivery includes:
+
+```http
+Content-Type: application/json
+User-Agent: QuotaMint-Webhooks/1.0
+X-QuotaMint-Delivery: delivery-id
+X-QuotaMint-Event: usage.consumed
+X-QuotaMint-Timestamp: 1760697000
+X-QuotaMint-Signature: sha256=...
+```
+
+The signature is HMAC-SHA256 over `<timestamp>.<raw request body>` using the endpoint's `whsec_...` secret. Verify the signature before parsing JSON and reject timestamps outside your replay window.
+
+```text
+message = X-QuotaMint-Timestamp + "." + raw request body
+signature = "sha256=" + hex(HMAC-SHA256(secret, message))
+```
+
+Preserve the raw body. Do not verify a re-serialized JSON value.
+
+## Delivery behavior
+
+The worker claims pending deliveries using `SKIP LOCKED`, signs the exact payload, sends the request, and records the result. Failed deliveries are retried at 1 minute, 5 minutes, 30 minutes, 2 hours, and 8 hours, then marked `FAILED` after the sixth attempt.
+
+Your handler should:
+
+1. Read and verify the signature.
+2. Deduplicate using `X-QuotaMint-Delivery` or an event identifier.
+3. Apply the change transactionally.
+4. Return a `2xx` response quickly.
+5. Process slow work asynchronously.
+
+Webhook delivery is at-least-once. Your handler must tolerate duplicates and out-of-order notifications.

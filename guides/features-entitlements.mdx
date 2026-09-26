@@ -1,0 +1,46 @@
+---
+title: "Features and entitlements"
+description: "Model boolean access, metered capabilities, and credit-priced actions"
+---
+
+A feature key is the stable contract between your product and QuotaMint. Choose keys that describe the capability, not the implementation.
+
+Good keys:
+
+```text
+generate_image
+export_csv
+run_agent
+```
+
+Avoid keys that include provider names, database IDs, or temporary UI labels.
+
+## Feature types
+
+| Type | Use it for | Runtime behavior |
+| --- | --- | --- |
+| `BOOLEAN` | On/off access | Entitlement decision |
+| `METERED` | Numeric plan signal | Stored as a plan limit; arbitrary numeric enforcement is not implemented by the runtime |
+| `CREDIT` | Actions with a credit cost | `check` and `consume` resolve cost and balance |
+
+A feature can have a unit label such as `image`, `minute`, or `run`. Keep the unit consistent across your product and usage reports.
+
+## Entitlement matrix
+
+Each plan can define a limit for each feature:
+
+- Boolean features use an enabled or disabled value.
+- Credit features use a credit cost and entitlement.
+- Numeric limits are available as configuration signals; enforce them in your application until QuotaMint exposes numeric window enforcement.
+
+A customer is entitled only when the feature and plan are active and the plan grants access. Denials use a stable `reason` such as `feature_not_found`, `feature_not_entitled`, `no_active_plan`, or `plan_inactive`.
+
+## Versioning keys
+
+Feature keys are referenced by customer requests and usage history. Prefer adding a new key over changing the meaning of an existing one. Archive old features after existing historical data no longer needs them.
+
+If a feature's price changes, decide whether old jobs should keep their original price. For a clean boundary, create a new feature key or coordinate the change with your job idempotency records.
+
+## Product-side authorization
+
+QuotaMint decides whether the customer may use the feature. Your backend still owns the action itself: loading the account, validating the request, starting the job, and returning the result. Do not treat a successful entitlement check as proof that every other business rule passed.

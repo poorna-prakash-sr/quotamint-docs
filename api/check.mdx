@@ -1,0 +1,57 @@
+---
+title: "Check entitlement"
+description: "Ask whether a customer can use a feature without consuming credits"
+---
+
+`POST /v1/check` is informational. It performs entitlement and affordability resolution but does not write usage, ledger, or idempotency data.
+
+## Request
+
+```json
+{
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1
+}
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `customerId` | string | yes | Up to 255 characters |
+| `feature` | string | yes | Feature key, up to 120 characters |
+| `quantity` | integer | no | Defaults to `1`; range `1`–`1000000` |
+
+## Allowed response
+
+```json
+{
+  "allowed": true,
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "requiredCredits": 10,
+  "creditsRemaining": 500
+}
+```
+
+## Denied response
+
+Denials are decisions, not HTTP errors. They return `200` with `allowed: false`:
+
+```json
+{
+  "allowed": false,
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "reason": "insufficient_credits",
+  "creditsRemaining": 2,
+  "requiredCredits": 10
+}
+```
+
+Possible reasons include `customer_not_found`, `customer_inactive`, `no_active_plan`, `plan_inactive`, `feature_not_found`, `feature_not_entitled`, and `insufficient_credits`.
+
+<Warning>
+  A successful check is not a reservation. Another request may spend the balance before your next call. Use `consume` for enforcement.
+</Warning>

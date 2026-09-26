@@ -1,0 +1,68 @@
+---
+title: "Consume credits"
+description: "Authorize a feature and deduct credits atomically"
+---
+
+`POST /v1/consume` is the authoritative runtime decision. When it succeeds, QuotaMint deducts credits, writes a usage event, and appends a ledger row in one transaction.
+
+## Request
+
+```json
+{
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "idempotencyKey": "image_job_8472",
+  "metadata": {
+    "requestId": "req_123"
+  }
+}
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `customerId` | string | yes | Up to 255 characters |
+| `feature` | string | yes | Feature key, up to 120 characters |
+| `quantity` | integer | no | Defaults to `1`; range `1`–`1000000` |
+| `idempotencyKey` | string | yes | Up to 255 characters; stable across retries |
+| `metadata` | object | no | Plan-specific byte and key limits |
+
+## Allowed response
+
+```json
+{
+  "allowed": true,
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "creditsUsed": 10,
+  "creditsRemaining": 490
+}
+```
+
+## Denied response
+
+A denied consume returns `200` with the same decision shape as `check` and does not charge credits:
+
+```json
+{
+  "allowed": false,
+  "customerId": "user_123",
+  "feature": "generate_image",
+  "quantity": 1,
+  "reason": "insufficient_credits",
+  "creditsRemaining": 2,
+  "requiredCredits": 10
+}
+```
+
+## Atomicity
+
+The runtime uses a conditional balance update. Concurrent requests cannot both spend the last available credit. The full path—idempotency claim, entitlement resolution, deduction, usage event, and ledger entry—commits or rolls back together.
+
+## Client behavior
+
+- Perform the call from your backend.
+- Start billable work only when `allowed` is `true`.
+- Retry transient `500`, `503`, and network failures with the same idempotency key.
+- Treat `allowed: false` as a normal product outcome and show an upgrade, top-up, or retry message appropriate to the reason.

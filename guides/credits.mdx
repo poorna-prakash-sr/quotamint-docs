@@ -1,0 +1,75 @@
+---
+title: "Credits and the ledger"
+description: "Grant, charge, refund, and audit exact credit balances"
+---
+
+Credits are decimal units with six digits of precision. QuotaMint stores balances as exact numeric values and never uses floating-point arithmetic for deductions.
+
+## Credit lifecycle
+
+A balance can change through:
+
+- `INITIAL_GRANT`: a first allocation
+- `MONTHLY_GRANT`: the current plan period allocation
+- `TOPUP`: purchased or externally granted credits
+- `MANUAL_ADJUSTMENT`: an operator correction
+- `REFUND`: a returned charge
+- `USAGE_CHARGE`: a successful `consume` request
+
+Every mutation writes an append-only ledger row with the amount, balance after the mutation, reason, and optional reference.
+
+## Grant credits
+
+Use a unique `referenceId` for every external grant. Repeating a grant with the same customer and reference applies it once.
+
+```bash
+curl -sS -X POST "$RUNTIME/internal/v1/credits/grant" \
+  -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId":"6f1e6b7c-1f2a-4b3c-8d4e-5f6071829304",
+    "customerId":"user_123",
+    "amount":500,
+    "reason":"TOPUP",
+    "referenceId":"stripe_invoice_in_123"
+  }'
+```
+
+```json
+{
+  "applied": true,
+  "customerId": "user_123",
+  "amount": 500,
+  "balance": 1000,
+  "reason": "TOPUP",
+  "reference": "stripe_invoice_in_123",
+  "ledgerEntryId": "..."
+}
+```
+
+## Adjust or refund
+
+Use `adjust` for a signed change. Negative adjustments are allowed only when they do not push the balance below zero.
+
+```bash
+curl -sS -X POST "$RUNTIME/internal/v1/credits/adjust" \
+  -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId":"6f1e6b7c-1f2a-4b3c-8d4e-5f6071829304",
+    "customerId":"user_123",
+    "amount":-100,
+    "reason":"REFUND",
+    "referenceId":"refund_88"
+  }'
+```
+
+A repeated reference is safe to retry. A rejected negative adjustment leaves the balance unchanged.
+
+## Monthly grants
+
+The worker grants the active plan's `monthlyCredits` once per current UTC month. The reference is `monthly_grant:<YYYY-MM>`, so restarts and multiple worker instances cannot double-grant. A mid-month plan assignment is granted on the next tick, not backfilled for earlier months.
+
+## Zero-cost features
+
+A credit feature may cost zero. It can still be entitled or denied by plan status and feature access. Successful usage remains auditable.

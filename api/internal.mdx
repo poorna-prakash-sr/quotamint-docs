@@ -1,0 +1,82 @@
+---
+title: "Internal API"
+description: "Synchronize plans, mutate credits, and manage credentials from a trusted service"
+---
+
+The internal API is for the QuotaMint control plane or your trusted backend only. Authenticate with `Authorization: Bearer $INTERNAL_API_SECRET`.
+
+## Credit grant
+
+`POST /internal/v1/credits/grant`
+
+```json
+{
+  "projectId": "project_uuid",
+  "customerId": "user_123",
+  "amount": 500,
+  "reason": "TOPUP",
+  "referenceId": "invoice_123"
+}
+```
+
+Allowed reasons: `INITIAL_GRANT`, `MONTHLY_GRANT`, `MANUAL_ADJUSTMENT`, `REFUND`, and `TOPUP`. `referenceId` is optional but strongly recommended for retry safety.
+
+## Credit adjustment
+
+`POST /internal/v1/credits/adjust` accepts the same body. Use a positive or negative exact amount. A negative result below zero is rejected. Use `REFUND` for returned usage and `MANUAL_ADJUSTMENT` for an operator correction.
+
+## Sync a customer plan
+
+`POST /internal/v1/customers/sync-plan`
+
+```json
+{
+  "projectId": "project_uuid",
+  "customerId": "user_123",
+  "plan": "pro",
+  "name": "Acme",
+  "email": "billing@example.com",
+  "status": "ACTIVE"
+}
+```
+
+This creates the customer when needed. The plan must be active. `status` is the customer status, normally `ACTIVE` or `INACTIVE`.
+
+## Create and revoke keys
+
+Create with `POST /internal/v1/api-keys`:
+
+```json
+{
+  "projectId": "project_uuid",
+  "name": "Production API",
+  "environment": "PRODUCTION"
+}
+```
+
+The response includes `id`, `prefix`, `environment`, and `secret`. The secret is returned exactly once.
+
+Revoke with `POST /internal/v1/api-keys/{id}/revoke`:
+
+```json
+{"projectId":"project_uuid"}
+```
+
+## Manage webhook endpoints
+
+Create with `POST /internal/v1/webhooks`:
+
+```json
+{
+  "projectId": "project_uuid",
+  "url": "https://api.example.com/quotamint/webhook",
+  "environment": "PRODUCTION",
+  "eventTypes": ["usage.consumed", "credits.updated"]
+}
+```
+
+Update uses `/webhooks/{id}/update` with the same fields. Enable, disable, and rotate the signing secret with their endpoint-specific routes. The response includes the secret only when it is newly created or rotated.
+
+<Warning>
+  Never accept internal API requests from an untrusted client. The internal secret can grant credits and mint credentials.
+</Warning>

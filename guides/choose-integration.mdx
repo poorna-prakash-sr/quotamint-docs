@@ -1,0 +1,62 @@
+---
+title: "Choose an integration model"
+description: "Keep billing, entitlement, and runtime responsibilities in the right place"
+---
+
+QuotaMint is designed to sit beside your billing system, not replace it.
+
+You integrate with plain HTTPS requests — there is no SDK to install. Any backend language that can
+POST JSON over TLS can use the runtime: see [calling QuotaMint from any language](/guides/rest-api-any-language)
+for the same working pattern in Node.js, Python, Go, Java, PHP, Ruby, C#, and Rust.
+
+## Recommended request flow
+
+```text
+1. Your billing provider confirms a subscription change
+2. Your backend syncs the customer's QuotaMint plan
+3. A product action reaches your backend
+4. Your backend calls /v1/consume with a stable idempotency key
+5. QuotaMint returns allowed or denied
+6. Your backend performs the work only after allowed=true
+```
+
+Stripe, Razorpay, Paddle, Lemon Squeezy, or a custom billing system remains the source of truth for payment status. Your webhook handler translates that status into a QuotaMint plan and credit grant.
+
+## When to use each endpoint
+
+| Need | Endpoint | Mutates state |
+| --- | --- | --- |
+| Show whether an action is available | `POST /v1/check` | No |
+| Authorize and charge a feature | `POST /v1/consume` | Yes |
+| Record usage without charging credits | `POST /v1/events` | Yes |
+| Assign a plan from your backend | `POST /internal/v1/customers/sync-plan` | Yes |
+| Add purchased or manual credits | `POST /internal/v1/credits/grant` | Yes |
+| Refund or adjust a balance | `POST /internal/v1/credits/adjust` | Yes |
+
+## Do not put QuotaMint in the browser
+
+Project API keys identify a project and can spend credits. Keep them on your server. The internal credential has broader write access and must never leave your control plane.
+
+Your frontend can call your own backend, and your backend can call QuotaMint. Return only the decision and information your UI needs.
+
+## Billing-provider example
+
+When a Stripe or Razorpay subscription becomes active:
+
+1. Verify the provider webhook signature.
+2. Look up your internal customer ID.
+3. Map the provider price or plan to a QuotaMint plan key.
+4. Call `sync-plan`.
+5. Grant purchased credits with a unique `referenceId` if the subscription includes a top-up.
+
+If the billing event is delivered twice, the same plan sync is safe to repeat. For grants, always provide a stable `referenceId` so the ledger cannot apply the same grant twice.
+
+## Choosing a credit model
+
+Use a credit feature when several resources share one allowance:
+
+- `generate_image` costs 10 credits
+- `generate_video` costs 50 credits
+- `run_agent` costs 3 credits
+
+Use `events` when you need a usage meter that does not affect the balance, such as tokens, seconds, or documents. You can use both for the same product action if you need a charge and an analytical event.

@@ -1,0 +1,33 @@
+---
+title: "Usage, credits, and audit history"
+description: "Find runtime activity, ledger changes, and control-plane mutations"
+---
+
+The dashboard reads the tables written by the runtime and presents them by project and environment.
+
+## Usage
+
+Usage views expose event detail, filters, daily series, customer breakdowns, and event metadata. Consumption records identify the customer, feature, quantity, credits charged, timestamp, and idempotency key when present.
+
+Events sent through `/v1/events` are visible as usage records but have no credit charge. Each record has a public `evt_...` identifier.
+
+## Customer detail
+
+Customer detail includes:
+
+- Assigned plan and status
+- Current credit balance
+- Feature access
+- Usage history
+- Append-only credit ledger
+- Manual credit-change actions for authorized roles
+
+Manual credit changes go through the runtime internal API. The dashboard never updates a balance directly.
+
+## Audit log
+
+The audit view records workspace and project mutations with actor, target, action, metadata, and timestamp. Retention follows the workspace account plan. Older data remains stored but is not queryable or exportable after the selected retention window.
+
+## Exports
+
+CSV exports are available on Pro. Scale additionally supports JSON exports. Export availability and retained history depend on the workspace account plan; do not build a reporting workflow around data older than the configured retention window.

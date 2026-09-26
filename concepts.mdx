@@ -1,0 +1,65 @@
+---
+title: "Core concepts"
+description: "The objects and boundaries you use to model product access"
+---
+
+QuotaMint has two boundaries: the **workspace** for people and account limits, and the **project** for runtime product data.
+
+## Workspace
+
+A workspace is a team and billing-account boundary. It contains members, projects, a QuotaMint account plan, usage allowance, webhooks, alerts, and audit history.
+
+Workspaces use the roles `OWNER`, `ADMIN`, `DEVELOPER`, and `VIEWER`. The workspace owner is always able to access every project.
+
+## Project
+
+A project is the runtime isolation boundary. It owns:
+
+- Customers and their plan assignments
+- Plans, features, and entitlements
+- API keys and their environment
+- Usage events, idempotency records, and credit ledgers
+- Project members and webhooks
+
+Every runtime query is scoped to the project resolved from the API key. A customer ID from another project cannot be resolved accidentally.
+
+## Customer
+
+A customer represents a user, organization, account, or any billable subject in your product. QuotaMint stores your `externalId`; it does not require your customer to authenticate with QuotaMint.
+
+Customers have an active or inactive status, one optional plan, and a credit balance. The pair `(project, externalId)` is unique.
+
+## Plan
+
+A plan is a named set of access rules and a monthly credit grant. Plans have a stable key such as `free`, `pro`, or `enterprise`. A customer can have one active plan at a time.
+
+## Feature
+
+A feature is a project-defined capability such as `generate_image`, `export_csv`, or `priority_support`. Features can be:
+
+- `BOOLEAN`: entitlement is on or off
+- `METERED`: a numeric limit signal
+- `CREDIT`: each quantity has a credit cost
+
+Only `CREDIT` features participate in `consume` credit deduction. Usage enforcement for arbitrary numeric `METERED` limits is not implemented in the current runtime; use plan entitlements and your own application logic until that contract exists.
+
+## Credits
+
+Credits are exact decimal units. A feature can cost fractional credits, and balances support up to six decimal places. The runtime writes an append-only ledger for grants, refunds, adjustments, monthly grants, and usage charges.
+
+## Environment
+
+The schema has `DEVELOPMENT`, `STAGING`, and `PRODUCTION`. The API key prefix exposes the important distinction:
+
+- `qm_test_...` maps to development and staging
+- `qm_live_...` maps to production
+
+The dashboard labels these as **Test** and **Live**. Customers, plans, features, and balances are project-scoped, not environment-scoped. Use separate projects when test and live balances must be isolated.
+
+## Decision versus record
+
+- `check` asks whether a feature is affordable and writes nothing.
+- `consume` makes the authoritative decision, charges credits, and records usage.
+- `events` records usage that does not move credits.
+
+The runtime API is called from your backend. It is not a proxy in front of your application traffic.

@@ -1,0 +1,39 @@
+---
+title: "Security checklist"
+description: "Protect credentials, customer data, balances, and webhook delivery"
+---
+
+Before production traffic, verify each item below.
+
+## Credentials
+
+- Store project keys in a server-side secret manager.
+- Keep `INTERNAL_API_SECRET` out of browsers and customer-facing services.
+- Use separate test and live secrets.
+- Rotate keys by creating the replacement before revoking the old key.
+- Never log `Authorization` headers, request bodies, metadata, or webhook secrets.
+
+## Request handling
+
+- Call QuotaMint from your backend.
+- Use `consume` as the authoritative decision.
+- Use a stable idempotency key for every billable operation.
+- Retry `500`, `503`, network ambiguity, and `429` with the original key and appropriate delay.
+- Treat denial reasons as normal product outcomes, not exceptional server failures.
+
+## Webhooks
+
+- Use a public HTTPS endpoint.
+- Preserve the raw body for signature verification.
+- Verify the HMAC signature and timestamp before parsing.
+- Deduplicate deliveries.
+- Return quickly and queue slow work.
+- Rotate signing secrets deliberately; update the consumer before changing the producer.
+
+## Data isolation
+
+Projects are the runtime tenant boundary. Use one project per environment when balances must not mix. Never let a customer choose `projectId` for a public request; the API key establishes it.
+
+## Operational stop switches
+
+A disabled project returns `403 project_disabled`. Build a clear fallback path in your product and alert on repeated `503` responses. The current runtime does not implement fail-open semantics, so do not assume a disabled or unavailable project will allow traffic.

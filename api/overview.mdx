@@ -1,0 +1,48 @@
+---
+title: "API overview"
+description: "Understand the public runtime API and the internal control-plane API"
+---
+
+QuotaMint exposes two HTTP surfaces.
+
+## Public runtime API
+
+Your backend calls these endpoints with a project API key:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/v1/check` | Check entitlement and affordability without mutation |
+| `POST` | `/v1/consume` | Authoritatively decide, deduct credits, and record usage |
+| `POST` | `/v1/events` | Record non-credit usage |
+
+Base URLs are deployment-specific. The dashboard's **Developers** page shows the configured runtime URL.
+
+## Internal API
+
+Your control plane calls `/internal/v1/*` with the server-only internal secret:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/internal/v1/credits/grant` | Grant credits |
+| `POST` | `/internal/v1/credits/adjust` | Signed credit adjustment or refund |
+| `POST` | `/internal/v1/customers/sync-plan` | Create or update a customer plan |
+| `POST` | `/internal/v1/api-keys` | Mint an API key |
+| `POST` | `/internal/v1/api-keys/{id}/revoke` | Revoke an API key |
+| `POST` | `/internal/v1/webhooks` | Create a webhook endpoint |
+| `POST` | `/internal/v1/webhooks/{id}/update` | Update an endpoint |
+| `POST` | `/internal/v1/webhooks/{id}/disable` | Disable an endpoint |
+| `POST` | `/internal/v1/webhooks/{id}/enable` | Enable an endpoint |
+| `POST` | `/internal/v1/webhooks/{id}/rotate-secret` | Rotate its signing secret |
+
+Do not expose internal routes to customer applications or browsers.
+
+## Request conventions
+
+- JSON request and response bodies
+- Unexpected JSON fields are rejected
+- `Authorization: Bearer ...` for both credential types
+- `X-Request-ID` is echoed when it contains 1–128 allowed ASCII characters; otherwise the runtime generates one
+- Every response includes a request ID for support and log correlation
+- Default request body limit: 64 KiB
+
+Read [authentication](/api/authentication), then choose [check](/api/check), [consume](/api/consume), or [events](/api/events).

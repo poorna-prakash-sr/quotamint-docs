@@ -1,0 +1,52 @@
+---
+title: "Usage events"
+description: "Record usage that does not consume credits"
+---
+
+Use `POST /v1/events` for project-defined usage such as tokens, seconds, documents, or requests. Events are stored for reporting and do not create a credit-ledger row.
+
+Example:
+
+```bash
+curl -sS -X POST "$RUNTIME/v1/events" \
+  -H "Authorization: Bearer $QUOTAMINT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerId":"user_123",
+    "event":"tokens_used",
+    "quantity":1840,
+    "idempotencyKey":"openai_req_847",
+    "metadata":{"model":"example-model"},
+    "timestamp":"2026-09-14T10:30:00Z"
+  }'
+```
+
+```json
+{
+  "accepted": true,
+  "eventId": "evt_6b7c1f2a4b3c8d4e5f6071829304abcd"
+}
+```
+
+## Event properties
+
+- `customerId`: your stable customer identifier.
+- `event`: a project-defined key, up to 120 characters.
+- `quantity`: a positive integer from 1 to 1,000,000. It is required here, unlike `check` and `consume`, which default it to 1.
+- `metadata`: an optional JSON object constrained by the workspace plan.
+- `timestamp`: an optional ISO-8601 timestamp. The runtime validates timestamp skew.
+- `idempotencyKey`: optional. Without one, every accepted request creates a new event.
+
+Events use `featureId = null`, store the event key, and never move credits. If you need to charge credits and record a separate metric, call `consume` and `events` with distinct keys.
+
+## Event idempotency
+
+With an idempotency key, the same project/key/payload returns the original accepted response. Reusing the key with a different payload, endpoint, or environment returns `409 idempotency_key_reused`.
+
+## When to use `consume` instead
+
+Use `consume` when the request must be denied if the customer cannot pay for it. `events` is a recorder; it does not answer whether the customer is entitled and does not change the balance.
+
+## Retention
+
+Usage history is subject to the workspace account plan's retention window. The runtime keeps the underlying rows; older history is not queryable or exportable once it falls outside the selected retention window.

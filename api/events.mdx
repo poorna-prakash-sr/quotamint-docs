@@ -1,0 +1,47 @@
+---
+title: "Record usage events"
+description: "Store non-credit usage for reporting and limits"
+---
+
+`POST /v1/events` records a project-defined metric without changing a customer's credit balance.
+
+## Request
+
+```json
+{
+  "customerId": "user_123",
+  "event": "tokens_used",
+  "quantity": 1840,
+  "idempotencyKey": "openai_req_847",
+  "metadata": {
+    "model": "example-model"
+  },
+  "timestamp": "2026-09-14T10:30:00Z"
+}
+```
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `customerId` | string | yes | Customer in the API-key project |
+| `event` | string | yes | Metric key, up to 120 characters |
+| `quantity` | integer | yes | Range `1`–`1000000`; unlike `check` and `consume`, there is no default — omitting it is a `400 invalid_request` |
+| `idempotencyKey` | string | no | Stable key makes ingestion retry-safe |
+| `metadata` | object | no | Plan-specific byte and key limits |
+| `timestamp` | ISO-8601 | no | Runtime validates timestamp skew: at most 5 minutes in the future; backdating allowed |
+
+## Response
+
+```json
+{
+  "accepted": true,
+  "eventId": "evt_6b7c1f2a4b3c8d4e5f6071829304abcd"
+}
+```
+
+The event ID is public and can be used to correlate logs and dashboard usage. Event rows have no feature ID and no credit charge.
+
+## Idempotency and errors
+
+Without `idempotencyKey`, every accepted request is recorded. With a key, the same project/key/payload replays the original response. A changed payload returns `409 idempotency_key_reused`.
+
+A missing customer returns `404`. Validation errors return `400`. Workspace event capacity and per-key rate limits return `429`.

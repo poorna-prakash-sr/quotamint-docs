@@ -1,0 +1,35 @@
+---
+title: "Workspaces, projects, and roles"
+description: "Configure team access and isolate runtime data"
+---
+
+## Workspace roles
+
+| Capability | Owner | Admin | Developer | Viewer |
+| --- | --- | --- | --- | --- |
+| Read dashboard data | Yes | Yes | Yes | Yes |
+| Manage plans and features | Yes | Yes | No | No |
+| Manage customers and plan assignment | Yes | Yes | No | No |
+| Change customer credits | Yes | Yes | No | No |
+| Create test keys | Yes | Yes | Yes | No |
+| Create live keys | Yes | Yes | No | No |
+| Manage projects and project settings | Yes | Yes | No | No |
+| Manage workspace members | Yes | No | No | No |
+
+Project roles can replace a member's workspace role inside one project on Pro and Scale. They never widen workspace-level permissions. A workspace owner retains owner access everywhere.
+
+## Account-plan availability
+
+- Free uses workspace roles for every project.
+- Pro allows project `ADMIN` and `DEVELOPER` roles.
+- Scale additionally allows project `VIEWER` roles.
+
+Workspace-level membership remains an owner-only action.
+
+## Projects and environments
+
+Create separate projects when customer data or credit balances must be isolated. The Test/Live selector changes which keys and usage the dashboard shows; it does not turn a project-scoped customer into a different customer record.
+
+## Authorization boundary
+
+QuotaMint resolves the active workspace, project, and environment from the dashboard context and then verifies membership. A selected identifier is never trusted by itself. The runtime independently scopes every query to the project resolved from the API key.

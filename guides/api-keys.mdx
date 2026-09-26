@@ -1,0 +1,43 @@
+---
+title: "API keys"
+description: "Create, store, rotate, and revoke runtime credentials"
+---
+
+Project API keys authenticate calls to `/v1/*`. They are scoped to one project and one environment.
+
+## Key format
+
+```text
+qm_test_<secret>
+qm_live_<secret>
+```
+
+The secret contains 32 bytes from a cryptographically secure random source and is encoded as base64url. QuotaMint stores the prefix in clear text and a SHA-256 digest of the full secret.
+
+## Send a key
+
+Use the standard bearer header:
+
+```http
+Authorization: Bearer qm_test_...
+```
+
+Malformed, unknown, revoked, and environment-mismatched keys all return `401`. Raw credentials and authorization headers are never written to runtime logs.
+
+## Secret handling
+
+- Keep keys in a server-side environment or secret manager.
+- Use a different key per service when independent revocation matters.
+- Never expose a key in browser JavaScript, mobile app binaries, logs, or support screenshots.
+- Do not use the internal service credential as a project key.
+- Rotate keys by creating the replacement before revoking the old one.
+
+## Internal credential
+
+The control plane uses `INTERNAL_API_SECRET` for `/internal/v1`. It must be at least 32 characters and is compared in constant time. Project keys are rejected on internal routes, and the internal secret is rejected on public runtime routes.
+
+The internal secret can create and revoke keys, sync plans, and mutate credits. It belongs only between your trusted control plane and the runtime service.
+
+## Key status
+
+A key can be `ACTIVE` or `REVOKED`. Revocation does not delete historical usage or ledger data. `lastUsedAt` is refreshed in the background at most once per key every 15 minutes, so the request path avoids a write on every call.

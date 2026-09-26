@@ -1,0 +1,34 @@
+---
+title: "Dashboard authentication"
+description: "Sign in to the control plane and configure Auth.js providers"
+---
+
+The dashboard uses Auth.js for human authentication. The runtime API does not read dashboard cookies and does not implement login.
+
+## Sign-in methods
+
+| Method | Configuration | Callback or route |
+| --- | --- | --- |
+| Email and password | `AUTH_SECRET` | `/signup` and `/login` |
+| Google | `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` | `/api/auth/callback/google` |
+| GitHub | `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` | `/api/auth/callback/github` |
+
+The sign-in page shows only providers whose complete credential pair is configured. Passwords are stored as scrypt hashes with per-user salts; plaintext passwords are not persisted.
+
+## Sessions
+
+Auth.js uses database-backed account records and JSON Web Token sessions because the credentials provider requires the JWT strategy. Sessions have the default 30-day lifetime. A token cannot be revoked individually; rotate `AUTH_SECRET` to invalidate every session.
+
+Keep `AUTH_SECRET` stable during normal deployments and rotate it deliberately during an incident or global sign-out.
+
+## OAuth account linking
+
+OAuth sign-in does not silently link to an existing account created through another method. If the email already belongs to an account, sign in using the original method. The dashboard reports the account-linking error instead of merging identities without an explicit flow.
+
+Email verification is not enforced in the current product. Do not treat an unverified email as proof of identity for a sensitive workflow without adding verification in your deployment.
+
+## Authentication versus authorization
+
+A valid session only proves who signed in. Every dashboard request separately resolves workspace membership, role, active project, and environment. See [workspaces, projects, and roles](/dashboard/workspaces) for the permission matrix.
+
+The runtime has its own boundary: public calls use project API keys, and internal calls use the server-only internal secret.

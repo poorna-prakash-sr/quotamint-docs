@@ -1,0 +1,59 @@
+---
+title: "Customers and plans"
+description: "Sync subscription state into QuotaMint without moving billing logic"
+---
+
+QuotaMint does not listen directly to Stripe, Razorpay, or another payment provider. Your backend owns that integration and tells QuotaMint which plan a customer has.
+
+## Customer identity
+
+Use the same stable identifier your application already uses. QuotaMint accepts IDs such as `user_123`, `org_acme`, or `cus_provider_456`; the value is unique inside a project.
+
+Do not use an email address as the only identity if it can change. Store the provider customer ID and your own customer ID in your system, then send your stable application ID to QuotaMint.
+
+## Sync a plan
+
+`sync-plan` creates the customer if needed and assigns an active plan.
+
+```bash
+curl -sS -X POST "$RUNTIME/internal/v1/customers/sync-plan" \
+  -H "Authorization: Bearer $INTERNAL_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId":"6f1e6b7c-1f2a-4b3c-8d4e-5f6071829304",
+    "customerId":"user_123",
+    "plan":"pro",
+    "name":"Acme",
+    "email":"billing@example.com",
+    "status":"ACTIVE"
+  }'
+```
+
+```json
+{
+  "customerId": "user_123",
+  "plan": "pro",
+  "status": "ACTIVE",
+  "creditsRemaining": 500,
+  "created": true
+}
+```
+
+The plan key must refer to an active plan in the project. Assigning an archived plan returns `409 plan_inactive`.
+
+## Upgrades and downgrades
+
+Treat your billing provider webhook as an event stream:
+
+- Upgrade: sync the new plan, then grant any separately purchased credits.
+- Downgrade: sync the lower plan. Existing balances and history are not deleted.
+- Cancellation: sync an inactive customer or remove the plan according to your product policy.
+- Duplicate provider event: process it idempotently in your webhook handler and repeat the same sync safely.
+
+QuotaMint does not infer plan changes from a payment provider and does not process payments itself.
+
+## Plan assignment and monthly credits
+
+A plan can define `monthlyCredits`. The worker grants the current UTC calendar month's allocation once per customer, using a reference such as `monthly_grant:2026-09`. Mid-month assignments receive their first recurring grant on the next worker tick; earlier periods are not backfilled.
+
+Read [credits](/guides/credits) for top-ups, refunds, and ledger behavior.

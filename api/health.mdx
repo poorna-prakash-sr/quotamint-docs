@@ -1,0 +1,48 @@
+---
+title: "Health, readiness, and metrics"
+description: "Probe the runtime and collect operational signals"
+---
+
+These endpoints do not require authentication.
+
+## Health
+
+`GET /health` reports process health only and does not touch PostgreSQL. It is suitable for a process supervisor restart check.
+
+```json
+{"status":"ok"}
+```
+
+## Readiness
+
+`GET /ready` checks runtime dependencies, including PostgreSQL. Use it to decide whether a replica should receive traffic.
+
+```json
+{"status":"ready"}
+```
+
+A dependency failure returns the normal error envelope and a non-`200` status.
+
+## Prometheus metrics
+
+`GET /metrics` returns Prometheus text exposition. Available families include:
+
+```text
+quotamint_http_requests_total{route,status}
+quotamint_http_request_duration_seconds{route}
+quotamint_check_allowed_total
+quotamint_check_denied_total
+quotamint_consume_success_total
+quotamint_consume_denied_total
+quotamint_consume_credits_micro_total
+quotamint_idempotency_hit_total
+quotamint_idempotency_conflict_total
+quotamint_events_accepted_total
+quotamint_database_error_total
+```
+
+Credit totals use micro-credits for exact accounting.
+
+## Request IDs and logs
+
+Every request has a request ID. Structured runtime logs include route, method, status, duration, error code, and—when known—project, API key, and customer identifiers. Authorization headers, API keys, request bodies, and metadata are never logged.

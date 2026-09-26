@@ -1,0 +1,43 @@
+---
+title: "Limits and concurrency"
+description: "Design around request, metadata, rate, and accounting guarantees"
+---
+
+## Request limits
+
+- `customerId`: 255 characters
+- `feature` and `event`: 120 characters
+- `quantity`: integer from 1 to 1,000,000
+- `idempotencyKey`: 255 characters
+- Request body: 64 KiB by default
+- Metadata: JSON object with plan-specific byte and key limits
+
+Free allows 2 KiB and 10 keys; Pro allows 8 KiB and 30 keys; Scale allows 32 KiB and 100 keys. An absolute 32 KiB metadata ceiling also applies.
+
+## Rate limits
+
+Each API key has its own per-minute window:
+
+| Account plan | Requests per minute per key |
+| --- | ---: |
+| Free | 60 |
+| Pro | 600 |
+| Scale | 3,000 |
+
+A full window returns `429 rate_limited`, a `Retry-After` header, and `retryAfterSeconds` in the error details. One busy key does not consume another key's window.
+
+## Monthly event capacity
+
+The workspace account plan also limits monthly runtime events. The runtime reserves capacity atomically before writing usage. Idempotent replays do not claim a second event.
+
+## Credit concurrency
+
+A balance deduction is one conditional database update. If twenty concurrent calls compete for a balance of ten credits at a ten-credit cost, exactly one can succeed. The transaction writes the usage event and ledger row only for the winner.
+
+## Idempotency concurrency
+
+Concurrent requests with the same key wait for the original owner to finish and then receive the recorded response. A shared key produces one logical charge, one event, and one ledger row.
+
+## Project isolation
+
+Every runtime query includes the project resolved by the API key. A customer ID, plan, feature, or idempotency key from another project cannot be selected by changing the request body.
